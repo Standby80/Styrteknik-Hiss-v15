@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <title>Styrteknik Hiss V15 </title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; user-select: none; background: #f0f2f5; }
+        #main-container { display: flex; width: 100%; height: 100%; }
+        
+        /* MENY */
+        #sidebar {
+            flex: 0 0 240px; background: #2c3e50; color: #ecf0f1; border-right: 1px solid #ccc;
+            display: flex; flex-direction: column; padding: 10px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 10; overflow-y: auto;
+        }
+        .component-btn {
+            display: flex; align-items: center; gap: 10px; padding: 6px 10px; margin-bottom: 4px;
+            background: #34495e; border: 1px solid #465c71; border-radius: 4px; cursor: pointer;
+            font-size: 12px; transition: all 0.2s; color: #fff;
+        }
+        .component-btn:hover { background: #2980b9; border-color: #3498db; transform: translateX(3px); }
+        h3 { margin: 15px 0 5px; color: #95a5a6; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #34495e; padding-bottom: 5px; }
+
+        /* HASTIGHET */
+        .speed-control {
+            background: #243342; padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #465c71;
+        }
+        .speed-control label { font-size: 11px; color: #bdc3c7; display: block; margin-bottom: 5px; font-weight: bold; }
+        .speed-control input[type=range] { width: 100%; cursor: pointer; }
+
+        /* RITYTA */
+        #canvas-wrapper {
+            flex: 1; position: relative; background-color: #e0e0e0; overflow: auto;
+        }
+        canvas {
+            background-color: #fff;
+            background-image: linear-gradient(#e0e0e0 1px, transparent 1px), linear-gradient(90deg, #e0e0e0 1px, transparent 1px);
+            background-size: 20px 20px; cursor: crosshair; display: block;
+        }
+
+        /* VISUELLT */
+        #visual-panel {
+            flex: 0 0 280px; background: #ecf0f1; border-left: 2px solid #bdc3c7;
+            display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; z-index: 20;
+        }
+        #motor-room {
+            height: 70px; background: #bdc3c7; border-radius: 5px; margin-bottom: 10px;
+            display: flex; justify-content: center; align-items: center; border: 2px solid #7f8c8d;
+            position: relative; z-index: 2;
+        }
+        #motor-icon { font-size: 35px; transition: transform 0.2s linear; z-index: 5; }
+        .rotating-cw { animation: spin-cw 1s linear infinite; color: #27ae60; }
+        .rotating-ccw { animation: spin-ccw 1s linear infinite; color: #c0392b; }
+        @keyframes spin-cw { 100% { transform: rotate(360deg); } }
+        @keyframes spin-ccw { 100% { transform: rotate(-360deg); } }
+
+        #shaft {
+            flex-grow: 1; background: #34495e; position: relative;
+            border: 4px solid #2c3e50; border-radius: 4px; overflow: hidden;
+            background-image: linear-gradient(to bottom, transparent 19.5%, rgba(255,255,255,0.3) 20%);
+            background-size: 100% 20%; 
+        }
+        #rails { position: absolute; top:0; bottom:0; left: 30%; right: 30%; border-left: 2px solid #555; border-right: 2px solid #555; }
+        
+        .rope {
+            position: absolute; width: 2px; background: #95a5a6; top: 0; z-index: 1;
+            transform-origin: top center;
+        }
+        #rope-car { left: 50%; }
+        #rope-cw { left: 14%; }
+
+        #elevator-car {
+            position: absolute; bottom: 0%; left: 32%; width: 36%; height: 80px;
+            background: #f1c40f; border: 2px solid #f39c12; display: flex; justify-content: center; align-items: center; 
+            z-index: 2; transition: bottom 0.1s linear; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        
+        #car-control-panel {
+            position: absolute; top: 5%; left: 20%; width: 60%; height: 90%;
+            background: #d35400; border: 1px solid #a04000; border-radius: 3px;
+            display: flex; flex-direction: column-reverse; justify-content: space-evenly; align-items: center;
+            z-index: 1; 
+        }
+        .car-btn {
+            width: 14px; height: 14px; background: #ecf0f1; color: #333; font-size: 9px; font-weight: bold;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; border: 1px solid #bdc3c7; box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+        .car-btn:active { background: #f1c40f; border-color: #f39c12; }
+        .car-btn.pressed { background: #f1c40f; box-shadow: inset 0 0 3px #e67e22; border-color: #e67e22; }
+
+        #counterweight { position: absolute; top: 0%; left: 10%; width: 8%; height: 35px; background: #7f8c8d; border: 1px solid #555; transition: top 0.1s linear; z-index: 1; }
+        
+        .door-left, .door-right {
+            position: absolute; top: 0; bottom: 0; width: 50%; background: #bdc3c7; border: 1px solid #7f8c8d;
+            transition: width 0.1s linear; z-index: 3; 
+        }
+        .door-left { left: 0; border-right: 1px solid #555; }
+        .door-right { right: 0; border-left: 1px solid #555; }
+        
+        .shaft-switch {
+            position: absolute; left: 5%; width: 20%; height: 10px;
+            background: #9b59b6; border: 1px solid #8e44ad; cursor: ns-resize;
+            z-index: 10; font-size: 8px; color: white; display: flex; align-items: center; justify-content: center; border-radius: 2px;
+        }
+        .shaft-switch.active { background: #2ecc71; border-color: #27ae60; box-shadow: 0 0 5px #2ecc71; }
+
+        .floor-btn-visual {
+            position: absolute; right: 15%; width: 16px; height: 16px;
+            background: #ecf0f1; border: 2px solid #7f8c8d; border-radius: 50%;
+            cursor: pointer; z-index: 10; 
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+            display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: bold; color: #333;
+        }
+        .floor-btn-visual:hover { transform: scale(1.1); }
+        .floor-btn-visual:active, .floor-btn-visual.pressed { background: #f1c40f; border-color: #f39c12; box-shadow: inset 0 0 5px #f39c12; }
+
+        .action-btn { width: 100%; padding: 8px; margin-top: 4px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; color: white; font-size: 11px; text-transform: uppercase; }
+        .btn-delete { background: #c0392b; } .btn-delete:hover { background: #e74c3c; }
+        .btn-clear { background: #7f8c8d; margin-top: 15px; }
+        .btn-reset-lift { background: #e67e22; margin-top: 10px; }
+        .btn-save { background: #27ae60; } .btn-save:hover { background: #2ecc71; }
+        .btn-load { background: #3498db; } .btn-load:hover { background: #2980b9; }
+        .btn-manual { background: #8e44ad; margin-top: 10px; } .btn-manual:hover { background: #9b59b6; }
+
+        #properties {
+            position: fixed; top: 60px; right: 300px; width: 220px; background: #fff;
+            border: 1px solid #ccc; border-radius: 5px; padding: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2); display: none; z-index: 100;
+        }
+        #properties.active { display: block; }
+        .prop-group { margin-bottom: 10px; }
+        .prop-group input, .prop-group select { width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box; font-size: 12px;}
+        #prop-desc { font-size: 11px; color: #555; background: #f9f9f9; padding: 5px; border: 1px solid #eee; border-radius: 3px; margin-top: 5px; line-height: 1.3; }
+
+        /* MANUAL MODAL */
+        #manual-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: #fff; width: 600px; max-height: 85vh; overflow-y: auto;
+            padding: 25px; border-radius: 8px; position: relative; color: #333;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #999; }
+        .close-btn:hover { color: #333; }
+        .modal-content h2 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .modal-content h4 { margin: 15px 0 5px; color: #e67e22; }
+        .modal-content ul { padding-left: 20px; font-size: 13px; line-height: 1.5; }
+        .modal-content li { margin-bottom: 5px; }
+        .key { font-family: monospace; background: #eee; padding: 2px 4px; border-radius: 3px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="main-container">
+    <div id="sidebar">
+        <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labbet v15</div>
+        
+        <div style="display:flex; gap:5px; margin-bottom:10px;">
+            <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
+            <button class="action-btn btn-load" onclick="document.getElementById('fileInput').click()">📂 Öppna</button>
+        </div>
+        <input type="file" id="fileInput" accept=".json" onchange="uploadCircuit(this)" style="display:none">
+
+        <div class="speed-control">
+            <label>Hissens Hastighet: <span id="speed-val">0.5x</span></label>
+            <input type="range" id="speed-slider" min="1" max="30" value="5" oninput="updateSpeed(this.value)">
+        </div>
+
+        <h3>Korg & Anrop (NO)</h3>
+        <div class="component-btn" onclick="addComp('CABIN_BTN')"><span>[#]</span> Lägg till Korg-knapp</div>
+        <div class="component-btn" onclick="addComp('CALL_BTN')"><span>(O)</span> Lägg till Anrops-knapp</div>
+
+        <h3>Manöverdon</h3>
+        <div class="component-btn" onclick="addComp('NO')"><span>_/_</span> Startknapp (NO)</div>
+        <div class="component-btn" onclick="addComp('NC')"><span>_/_</span> Stoppknapp (NC)</div>
+
+        <h3>Gränslägen</h3>
+        <div class="component-btn" onclick="addComp('LIMIT_NC')"><span>_/_</span> Gränsläge (NC)</div>
+        <div class="component-btn" onclick="addComp('LIMIT_NO')"><span>_/_</span> Gränsläge (NO)</div>
+
+        <h3>Hiss & Dörr Motor</h3>
+        <div class="component-btn" onclick="addComp('MOTOR_UP')"><span>M↑</span> Hiss Upp</div>
+        <div class="component-btn" onclick="addComp('MOTOR_DOWN')"><span>M↓</span> Hiss Ner</div>
+        <div class="component-btn" onclick="addComp('DOOR_OPEN')"><span>DO</span> Dörr Öppna</div>
+        <div class="component-btn" onclick="addComp('DOOR_CLOSE')"><span>DC</span> Dörr Stänga</div>
+        
+        <h3>Dörr-Sensorer</h3>
+        <div class="component-btn" onclick="addComp('DOOR_SENS_OPEN_NC')"><span>_/_</span> Dörr Öppen (NC)</div>
+        <div class="component-btn" onclick="addComp('DOOR_SENS_OPEN_NO')"><span>_/_</span> Dörr Öppen (NO)</div>
+        <div class="component-btn" onclick="addComp('DOOR_SENS_CLOSE_NO')"><span>_/_</span> Dörr Stängd (NO)</div>
+        <div class="component-btn" onclick="addComp('DOOR_SENS_CLOSE_NC')"><span>_/_</span> Dörr Stängd (NC)</div>
+        
+        <h3>Relä & Tid</h3>
+        <div class="component-btn" onclick="addComp('COIL')"><span>[ ]</span> Spole (K)</div>
+        <div class="component-btn" onclick="addComp('TIMER')"><span>🕒</span> Tidrelä (T)</div>
+        <div class="component-btn" onclick="addComp('CONTACT_NO')"><span>_/_</span> Hjälpkontakt (NO)</div>
+        <div class="component-btn" onclick="addComp('CONTACT_NC')"><span>_/_</span> Hjälpkontakt (NC)</div>
+        
+        <h3>Matning & Övrigt</h3>
+        <div class="component-btn" onclick="addComp('SOURCE_24V')"><span>⚡</span> 24V</div>
+        <div class="component-btn" onclick="addComp('SOURCE_0V')"><span>🔵</span> 0V</div>
+        <div class="component-btn" onclick="addComp('LAMP')"><span>(X)</span> Lampa</div>
+        <div class="component-btn" onclick="addComp('JUNCTION')"><span>⚫</span> Kopplingspunkt</div>
+        
+        <div style="margin-top:auto">
+            <button class="action-btn btn-manual" onclick="toggleManual()">📖 Manual / Hjälp</button>
+            <button class="action-btn btn-reset-lift" onclick="resetLiftPos()">🔄 Återställ Hiss</button>
+            <button class="action-btn btn-delete" onclick="deleteSelected()">Radera Vald</button>
+            <button class="action-btn btn-clear" onclick="resetCircuit()">Rensa Allt</button>
+        </div>
+    </div>
+
+    <div id="canvas-wrapper">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div id="properties">
+        <h4 style="margin-top:0">Egenskaper</h4>
+        <div id="prop-component-ui">
+            <div class="prop-group"><label>ID / Namn</label><input type="text" id="prop-label" oninput="updateProp('label', this.value)"></div>
+            <div id="timer-group" style="display:none">
+                <div class="prop-group">
+                    <label>Läge</label>
+                    <select id="prop-timer-mode" onchange="updateProp('timerMode', this.value)">
+                        <option value="TON">TON (Tillslagsfördröjning)</option>
+                        <option value="TOF">TOF (Frånslagsfördröjning)</option>
+                        <option value="TP">TP (Puls)</option>
+                        <option value="CYCLE">CYCLE (Blink)</option>
+                    </select>
+                    <div id="prop-desc">Utgången aktiveras efter att signalen varit aktiv den inställda tiden.</div>
+                </div>
+                <div class="prop-group"><label>Tid (sek)</label><input type="number" id="prop-time" value="3" oninput="updateProp('delay', this.value)"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="visual-panel">
+        <div id="motor-room"><div id="motor-icon">⚙️</div><div style="margin-left:10px; font-weight:bold; color:#555; font-size:12px;">Motor</div></div>
+        <div id="shaft">
+            <div id="rails"></div>
+            <div id="rope-car" class="rope"></div>
+            <div id="rope-cw" class="rope"></div>
+            <div id="counterweight"></div>
+            <div id="elevator-car">
+                <div id="car-control-panel">
+                    <div class="car-btn" id="v-btn-5" onmousedown="pressCabinBtn(5)" onmouseup="releaseCabinBtn(5)">5</div>
+                    <div class="car-btn" id="v-btn-4" onmousedown="pressCabinBtn(4)" onmouseup="releaseCabinBtn(4)">4</div>
+                    <div class="car-btn" id="v-btn-3" onmousedown="pressCabinBtn(3)" onmouseup="releaseCabinBtn(3)">3</div>
+                    <div class="car-btn" id="v-btn-2" onmousedown="pressCabinBtn(2)" onmouseup="releaseCabinBtn(2)">2</div>
+                    <div class="car-btn" id="v-btn-1" onmousedown="pressCabinBtn(1)" onmouseup="releaseCabinBtn(1)">1</div>
+                </div>
+                <div class="door-left" id="door-l"></div>
+                <div class="door-right" id="door-r"></div>
+            </div>
+            <div id="switches-container"></div>
+        </div>
+    </div>
+</div>
+
+<div id="manual-modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="toggleManual()">&times;</span>
+        <h2>Hiss-Simulator Manual</h2>
+        
+        <h4>1. Grundläggande Styrning</h4>
+        <ul>
+            <li><strong>Lägg till komponent:</strong> Klicka på knapparna i menyn till vänster.</li>
+            <li><strong>Flytta:</strong> Dra och släpp komponenter på ritytan.</li>
+            <li><strong>Markera flera:</strong> Håll in <span class="key">Shift</span> och klicka på flera, eller dra en ruta på tom yta.</li>
+            <li><strong>Kopiera/Klistra in:</strong> Använd <span class="key">Ctrl+C</span> och <span class="key">Ctrl+V</span>.</li>
+            <li><strong>Radera:</strong> Markera och tryck <span class="key">Delete</span>.</li>
+        </ul>
+
+        <h4>2. Kablar & Anslutningar</h4>
+        <ul>
+            <li><strong>Dra kabel:</strong> Klicka på en anslutningspunkt (grå prick) och dra till en annan.</li>
+            <li><strong>Skarva:</strong> Dra en <strong>Kopplingspunkt (⚫)</strong> och släpp den ovanpå en befintlig kabel eller direkt på 24V/0V-linjerna. Den snäpper fast automatiskt ("Magnet-funktion").</li>
+            <li><strong>Färger:</strong> <span style="color:#e74c3c">Röd</span>=24V, <span style="color:#2980b9">Blå</span>=0V, <span style="color:#d35400; font-weight:bold;">Orange</span>=Sluten Krets (Ström går).</li>
+            <li><strong>OBS:</strong> Förbrukare (lampor, motorer) tänds BARA om de har kontakt med både 24V och 0V.</li>
+        </ul>
+
+        <h4>3. Hiss-komponenter</h4>
+        <ul>
+            <li><strong>G1-G5 (Gränslägen):</strong> Placeras i schaktet för att känna av hissens position. Du kan dra dem upp/ner i schaktet.
+                <br><em>Tips:</em> Om du döper två gränslägen till samma namn (t.ex. "G2"), betraktas de som samma fysiska sensor.</li>
+            <li><strong>B1-B5 (Anropsknappar):</strong> Sitter fast på varje våning. Tryck på dem i schaktet för att simulera att någon vill åka. Systemet fyller automatiskt på saknade knappar (t.ex. om du tar bort B3 och lägger till en ny, blir det B3).</li>
+            <li><strong>Motorer:</strong> M↑ drar hissen upp, M↓ drar hissen ner.</li>
+        </ul>
+
+        <h4>4. Tidreläer (Funktioner)</h4>
+        <ul>
+            <li><strong>TON:</strong> Inkopplingsfördröjning. Startar efter inställd tid.</li>
+            <li><strong>TOF:</strong> Frånkopplingsfördröjning. Håller kvar signalen efter brytning.</li>
+            <li><strong>TP:</strong> Puls. Ger en fast puls oavsett hur kort signalen är.</li>
+            <li><strong>CYCLE:</strong> Blinkar PÅ/AV kontinuerligt.</li>
+        </ul>
+
+        <h4>5. Relä & Tidsstyrning (Viktigt!)</h4>
+        <ul>
+            <li><strong>Spole (K) + Hjälpkontakt:</strong> För att styra något indirekt.
+                <br><em>Exempel:</em> Döp en Spole till <strong>K1</strong>. Döp en Hjälpkontakt (NO) till <strong>K1</strong>.
+                <br>När spolen K1 får ström, kommer kontakten K1 att sluta sig.</li>
+            <li><strong>Tidrelä (T) + Hjälpkontakt:</strong>
+                <br><em>Exempel:</em> Döp ett Tidrelä till <strong>T1</strong> (sätt 3s). Döp en kontakt till <strong>T1</strong>.
+                <br>När T1 får ström, räknar den ner 3 sekunder, sedan slår kontakten T1 till.</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+const GRID = 20;
+
+function resizeCanvas() {
+    const wrapper = document.getElementById('canvas-wrapper');
+    canvas.width = 5000; 
+    canvas.height = Math.max(wrapper.offsetHeight, 1000);
+    draw();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function toggleManual() {
+    const m = document.getElementById('manual-modal');
+    m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
+}
+document.getElementById('manual-modal').addEventListener('click', function(e) {
+    if(e.target === this) toggleManual();
+});
+
+// GLOBALA VARIABLER
+let components = [], wires = [];
+let selectedComps = []; 
+let selectedWire = null;
+let wiringStart = null;
+let mousePos = {x:0, y:0};
+let lastTimerUpdate = Date.now();
+
+let isDragging = false;
+let dragOffset = {x:0, y:0};
+let selectionBox = null; 
+let clipboard = null; 
+
+let liftPos = 0; 
+let liftSpeed = 0.5; 
+let doorState = 0; const DOOR_SPEED = 1.0; 
+let draggingShaftLabel = null;
+let draggingShaftButton = null;
+
+function updateSpeed(val) {
+    liftSpeed = val / 10;
+    document.getElementById('speed-val').innerText = liftSpeed + "x";
+}
+
+function pressCabinBtn(num) {
+    const type = 'CABIN_BTN_' + num;
+    components.forEach(c => { if(c.type === type) c.state = true; });
+    const btn = document.getElementById('v-btn-' + num); if(btn) btn.classList.add('pressed');
+    updateLogic();
+}
+function releaseCabinBtn(num) {
+    const type = 'CABIN_BTN_' + num;
+    components.forEach(c => { if(c.type === type) c.state = false; });
+    const btn = document.getElementById('v-btn-' + num); if(btn) btn.classList.remove('pressed');
+    updateLogic();
+}
+
+function downloadCircuit() {
+    const data = JSON.stringify({ components, wires }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'hiss_krets.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function uploadCircuit(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            if(confirm("Ladda fil?")) {
+                components = data.components; wires = data.wires;
+                components.forEach(c => { c.state=false; c.inputSignal=false; c.grounded=false; c.timerCounter=0; c.coilActive=false; c.visited=false; });
+                selectedComps = []; selectedWire = null; updateShaftUI(); draw();
+            }
+        } catch(err) { alert("Felaktig fil!"); }
+    };
+    reader.readAsText(file); input.value = '';
+}
+
+function createComponent(type, x, y) {
+    const id = Math.random().toString(36).substr(2, 9);
+    let label = "", pins = [{x:0, y:-20}, {x:0, y:20}], delay = 0;
+    let timerMode = 'TON';
+
+    if (type === 'NO') label = "S2";
+    if (type === 'NC') label = "S1";
+    if (type === 'LAMP') label = "H1";
+    if (type === 'COIL') label = "K1";
+    if (type === 'TIMER') { label = "T1"; delay = 5; }
+    if (type === 'CONTACT_NO') label = "K1";
+    if (type === 'CONTACT_NC') label = "K1";
+    if (type === 'MOTOR_UP') label = "M_UP";
+    if (type === 'MOTOR_DOWN') label = "M_DN";
+    if (type === 'DOOR_OPEN') label = "DO";
+    if (type === 'DOOR_CLOSE') label = "DC";
+    
+    if (type === 'DOOR_SENS_OPEN_NO') label = "D_ÖNO";
+    if (type === 'DOOR_SENS_OPEN_NC') label = "D_ÖNC";
+    if (type === 'DOOR_SENS_CLOSE_NO') label = "D_SNO";
+    if (type === 'DOOR_SENS_CLOSE_NC') label = "D_SNC";
+    
+    if (type.includes('LIMIT')) label = "G1";
+    // Initial labels handled in addComp for Call/Cabin
+
+    if (type === 'SOURCE_24V') { label = "24V"; pins = [{x:0, y:10}]; }
+    if (type === 'SOURCE_0V') { label = "0V"; pins = [{x:0, y:-10}]; }
+    if (type === 'JUNCTION') { label = ""; pins = [{x:0, y:0}]; }
+
+    return { 
+        id, type, x, y, label, state: false, 
+        inputSignal: false, grounded: false, 
+        pins, delay, timerCounter: 0, coilActive: false, visited: false,
+        liftLevel: 50, onRail: null,
+        timerMode, timerOutput: false, lastCoilActive: false, timerRunning: false
+    };
+}
+
+// --- SMART SLOT FINDER ---
+function getNextAvailableSlot(prefix, typeSubstring) {
+    // Hitta alla knappar av denna typ (B1-B5 eller C1-C5)
+    const used = components
+        .filter(c => c.type.includes(typeSubstring))
+        .map(c => {
+             // Försök hitta siffran i Labeln (t.ex. "B3" -> 3)
+             const num = parseInt(c.label.replace(prefix, ''));
+             return isNaN(num) ? 0 : num;
+        });
+    
+    for(let i=1; i<=5; i++) {
+        if(!used.includes(i)) return i;
+    }
+    return null; // Fullt
+}
+
+function addComp(type) {
+    const wrapper = document.getElementById('canvas-wrapper');
+    const scrollX = wrapper.scrollLeft;
+    const startX = Math.floor((scrollX + 150) / GRID) * GRID;
+    let startY = Math.floor((wrapper.offsetHeight / 2) / GRID) * GRID;
+    if(type === 'SOURCE_24V') startY = 60;
+    if(type === 'SOURCE_0V') startY = wrapper.offsetHeight - 60;
+    
+    // --- SMART LOGIK FÖR KNAPPAR ---
+    if (type === 'CALL_BTN') {
+        const slot = getNextAvailableSlot("B", "CALL_BTN");
+        if (slot === null) { alert("Max 5 anropsknappar installerade!"); return; }
+        
+        const comp = createComponent(type, startX, startY);
+        comp.label = "B" + slot;
+        comp.liftLevel = (slot - 1) * 20 + 8; // Placera på rätt våning
+        components.push(comp);
+        selectedComps = [comp]; 
+        updatePropsUI(); updateShaftUI(); draw();
+        return;
+    }
+    
+    if (type === 'CABIN_BTN') {
+        const slot = getNextAvailableSlot("C", "CABIN_BTN");
+        if (slot === null) { alert("Max 5 korgknappar installerade!"); return; }
+        
+        // Vi måste skapa rätt typ (CABIN_BTN_1, _2 osv) för att logiken ska funka
+        const realType = "CABIN_BTN_" + slot;
+        const comp = createComponent(realType, startX, startY);
+        comp.label = "C" + slot;
+        components.push(comp);
+        selectedComps = [comp]; 
+        updatePropsUI(); updateShaftUI(); draw();
+        return;
+    }
+
+    // Vanliga komponenter
+    const comp = createComponent(type, startX, startY);
+    if(type.includes('LIMIT')) {
+        const count = components.filter(c => c.type === type).length + 1;
+        comp.label = "G" + count;
+        // Försök synka höjd om den finns
+        const existing = components.find(c => c.type.includes('LIMIT') && c.label === comp.label);
+        if(existing) comp.liftLevel = existing.liftLevel;
+    }
+    
+    components.push(comp); 
+    selectedComps = [comp]; 
+    if(comp.type === 'JUNCTION') autoConnectJunction(comp);
+    updatePropsUI();
+    updateShaftUI(); draw();
+}
+
+function updatePropsUI() {
+    const panel = document.getElementById('properties');
+    const timerGroup = document.getElementById('timer-group');
+    const desc = document.getElementById('prop-desc');
+    
+    if (selectedComps.length === 1 && !selectedComps[0].type.includes('SOURCE') && selectedComps[0].type !== 'JUNCTION') {
+        const comp = selectedComps[0];
+        panel.classList.add('active');
+        document.getElementById('prop-label').value = comp.label;
+        
+        if(comp.type === 'TIMER') {
+            timerGroup.style.display = 'block';
+            document.getElementById('prop-time').value = comp.delay;
+            document.getElementById('prop-timer-mode').value = comp.timerMode || 'TON';
+            const mode = comp.timerMode || 'TON';
+            if(mode === 'TON') desc.innerText = "TON: Utgången aktiveras efter att signalen varit aktiv den inställda tiden.";
+            if(mode === 'TOF') desc.innerText = "TOF: När signalen försvinner fortsätter utgången vara aktiv den inställda tiden.";
+            if(mode === 'TP') desc.innerText = "TP: Ger en fast puls när signalen aktiveras, oavsett hur kort/lång signalen är.";
+            if(mode === 'CYCLE') desc.innerText = "CYCLE: Blinkar PÅ/AV med intervallet satt av tiden.";
+        } else {
+            timerGroup.style.display = 'none';
+        }
+    } else { panel.classList.remove('active'); }
+}
+
+function deleteSelected() {
+    if (selectedComps.length > 0) {
+        const ids = selectedComps.map(c => c.id);
+        components = components.filter(c => !ids.includes(c.id));
+        wires = wires.filter(w => !ids.includes(w.from) && !ids.includes(w.to));
+        selectedComps = [];
+        updateShaftUI();
+    } else if (selectedWire) { wires = wires.filter(w => w !== selectedWire); selectedWire = null; }
+    updatePropsUI(); draw();
+}
+
+function updateProp(key, val) {
+    if(selectedComps.length !== 1) return;
+    const c = selectedComps[0];
+    if(key === 'label') { 
+        c.label = val; 
+        if(c.type.includes('LIMIT')) {
+            const partner = components.find(x => x.type.includes('LIMIT') && x.label === val && x !== c);
+            if(partner) c.liftLevel = partner.liftLevel;
+        }
+        updateShaftUI(); 
+    }
+    if(key === 'delay') c.delay = parseFloat(val);
+    if(key === 'timerMode') {
+        c.timerMode = val;
+        c.timerCounter = 0; c.timerOutput = false; c.timerRunning = false;
+        updatePropsUI(); 
+    }
+    draw();
+}
+
+function updateTimers() {
+    const now = Date.now(); const dt = (now - lastTimerUpdate) / 1000;
+    if (dt >= 0.1) {
+        components.forEach(c => {
+            if (c.type === 'TIMER') {
+                const input = c.coilActive; 
+                if(!c.timerMode || c.timerMode === 'TON') {
+                    if(input) c.timerCounter += dt; else c.timerCounter = 0;
+                    c.timerOutput = (c.timerCounter >= c.delay);
+                } else if(c.timerMode === 'TOF') {
+                    if(input) { c.timerOutput = true; c.timerCounter = 0; } 
+                    else { if(c.timerOutput) { c.timerCounter += dt; if(c.timerCounter >= c.delay) { c.timerOutput = false; c.timerCounter = 0; }}}
+                } else if(c.timerMode === 'TP') {
+                    if(input && !c.lastCoilActive) { c.timerRunning = true; c.timerCounter = 0; }
+                    if(c.timerRunning) { c.timerCounter += dt; c.timerOutput = true; if(c.timerCounter >= c.delay) { c.timerOutput = false; c.timerRunning = false; }}
+                } else if(c.timerMode === 'CYCLE') {
+                    if(input) { c.timerCounter += dt; let phase = c.timerCounter % (c.delay * 2); c.timerOutput = (phase < c.delay); } 
+                    else { c.timerCounter = 0; c.timerOutput = false; }
+                }
+                c.lastCoilActive = input;
+            }
+        });
+        lastTimerUpdate = now;
+    }
+}
+
+function updateLogic() {
+    components.forEach(c => { c.inputSignal = false; c.grounded = false; c.visited = false; });
+    let queue = components.filter(c => c.type === 'SOURCE_24V' || c.onRail === 'SOURCE_24V');
+    queue.forEach(c => c.inputSignal = true);
+    while(queue.length > 0) {
+        let curr = queue.shift();
+        if(curr.visited) continue;
+        curr.visited = true;
+        if(!canConduct(curr)) continue;
+        wires.forEach(w => {
+            let neighbor = null;
+            if(w.from === curr.id) neighbor = components.find(c => c.id === w.to);
+            if(w.to === curr.id) neighbor = components.find(c => c.id === w.from);
+            if(neighbor && !neighbor.visited) { neighbor.inputSignal = true; queue.push(neighbor); }
+        });
+    }
+    components.forEach(c => c.visited = false); 
+    let queueGround = components.filter(c => c.type === 'SOURCE_0V' || c.onRail === 'SOURCE_0V');
+    queueGround.forEach(c => c.grounded = true);
+    while(queueGround.length > 0) {
+        let curr = queueGround.shift();
+        if(curr.visited) continue;
+        curr.visited = true;
+        if(!canConduct(curr)) continue;
+        wires.forEach(w => {
+            let neighbor = null;
+            if(w.from === curr.id) neighbor = components.find(c => c.id === w.to);
+            if(w.to === curr.id) neighbor = components.find(c => c.id === w.from);
+            if(neighbor && !neighbor.visited) { neighbor.grounded = true; queueGround.push(neighbor); }
+        });
+    }
+    components.forEach(c => {
+        const isActive = c.inputSignal && c.grounded;
+        if (c.type === 'COIL' || c.type === 'TIMER' || c.type.includes('MOTOR') || c.type.includes('DOOR')) {
+            c.coilActive = isActive;
+        }
+    });
+    components.forEach(c => {
+        if (c.type.includes('CONTACT')) {
+            const master = components.find(m => (m.type === 'COIL' || m.type === 'TIMER') && m.label === c.label);
+            if (master) { c.state = (master.type === 'TIMER') ? master.timerOutput : master.coilActive; }
+            else c.state = false;
+        }
+    });
+    updateVisuals();
+}
+
+function canConduct(c) {
+    if (c.type.includes('SOURCE') || c.type === 'JUNCTION') return true;
+    if (c.type === 'COIL' || c.type === 'TIMER' || c.type === 'LAMP' || c.type.includes('MOTOR') || c.type.includes('DOOR')) return false;
+    if (c.type.includes('NO') || c.type.includes('LIMIT_NO') || c.type === 'CALL_BTN' || c.type.includes('CABIN_BTN') || c.type.includes('DOOR_SENS_CLOSE_NO')) return c.state === true;
+    if (c.type.includes('NC') || c.type.includes('LIMIT_NC') || c.type.includes('DOOR_SENS_OPEN_NC')) return c.state === false;
+    return false;
+}
+
+function updateVisuals() {
+    let mUp = false; let mDn = false; let dOpen = false; let dClose = false;
+    components.forEach(c => {
+        if(c.type === 'MOTOR_UP' && c.coilActive) mUp = true;
+        if(c.type === 'MOTOR_DOWN' && c.coilActive) mDn = true;
+        if(c.type === 'DOOR_OPEN' && c.coilActive) dOpen = true;
+        if(c.type === 'DOOR_CLOSE' && c.coilActive) dClose = true;
+    });
+
+    if(mUp && liftPos < 95) liftPos += liftSpeed;
+    if(mDn && liftPos > 0) liftPos -= liftSpeed;
+    if(dOpen && doorState < 100) doorState += DOOR_SPEED;
+    if(dClose && doorState > 0) doorState -= DOOR_SPEED;
+
+    document.getElementById('elevator-car').style.bottom = liftPos + "%";
+    document.getElementById('counterweight').style.top = (liftPos) + "%";
+    const icon = document.getElementById('motor-icon');
+    if(mUp) icon.className = 'rotating-cw'; else if(mDn) icon.className = 'rotating-ccw'; else icon.className = '';
+
+    const doorWidth = 50 - (doorState / 2); 
+    document.getElementById('door-l').style.width = doorWidth + "%";
+    document.getElementById('door-r').style.width = doorWidth + "%";
+
+    const shaft = document.getElementById('shaft');
+    const shaftHeight = shaft.offsetHeight;
+    
+    const carBottomPx = (liftPos / 100) * shaftHeight;
+    const carTopPx = shaftHeight - carBottomPx - 80; 
+    document.getElementById('rope-car').style.height = carTopPx + "px";
+    const cwTopPx = (liftPos / 100) * shaftHeight;
+    document.getElementById('rope-cw').style.height = cwTopPx + "px";
+
+    const carHeight = 80;
+    const switches = document.querySelectorAll('.shaft-switch');
+    switches.forEach(el => {
+        const compLabel = el.dataset.label; 
+        const matchingComps = components.filter(c => c.type.includes('LIMIT') && c.label === compLabel);
+        if(matchingComps.length > 0) {
+            const compLevel = matchingComps[0].liftLevel;
+            const switchPosPx = (compLevel / 100) * shaftHeight;
+            const carBottomPx = (liftPos / 100) * shaftHeight;
+            const carTopPx = carBottomPx + carHeight;
+            const hit = (carTopPx >= switchPosPx && carTopPx <= (switchPosPx + 15));
+            matchingComps.forEach(c => c.state = hit);
+            if(hit) el.classList.add('active'); else el.classList.remove('active');
+        }
+    });
+    
+    const buttons = document.querySelectorAll('.floor-btn-visual');
+    buttons.forEach(el => {
+        const id = el.dataset.id;
+        const comp = components.find(c => c.id === id);
+        if(comp && comp.state) el.classList.add('pressed'); else el.classList.remove('pressed');
+    });
+
+    const doorOpenLimit = (doorState >= 100);
+    const doorClosedLimit = (doorState <= 0);
+    components.forEach(c => {
+        if(c.type.includes('DOOR_SENS_OPEN')) c.state = doorOpenLimit;
+        if(c.type.includes('DOOR_SENS_CLOSE')) c.state = doorClosedLimit; 
+    });
+}
+
+function updateShaftUI() {
+    const container = document.getElementById('switches-container');
+    const limitLabels = [...new Set(components.filter(c => c.type.includes('LIMIT')).map(c => c.label))];
+    const callBtns = components.filter(c => c.type === 'CALL_BTN');
+
+    Array.from(container.children).forEach(el => {
+        if(el.className === 'shaft-switch' && !limitLabels.includes(el.dataset.label)) el.remove();
+        if(el.className === 'floor-btn-visual' && !callBtns.find(c => c.id === el.dataset.id)) el.remove();
+    });
+
+    limitLabels.forEach(lbl => {
+        let el = container.querySelector(`.shaft-switch[data-label="${lbl}"]`);
+        const comp = components.find(c => c.label === lbl && c.type.includes('LIMIT'));
+        if(!el) {
+            el = document.createElement('div');
+            el.className = 'shaft-switch';
+            el.dataset.label = lbl;
+            el.innerText = lbl;
+            el.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); draggingShaftLabel = lbl; });
+            container.appendChild(el);
+        }
+        el.style.bottom = comp.liftLevel + '%';
+    });
+
+    callBtns.forEach(c => {
+        let el = container.querySelector(`.floor-btn-visual[data-id="${c.id}"]`);
+        if(!el) {
+            el = document.createElement('div');
+            el.className = 'floor-btn-visual';
+            el.dataset.id = c.id;
+            el.innerText = c.label.replace(" NO", ""); 
+            // INGEN DRAG LISTENER
+            el.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); c.state = true; updateLogic(); });
+            el.addEventListener('mouseup', (e) => { e.stopPropagation(); c.state = false; updateLogic(); });
+            container.appendChild(el);
+        }
+        el.style.bottom = c.liftLevel + '%';
+    });
+}
+
+function resetLiftPos() { liftPos = 0; doorState = 0; document.getElementById('elevator-car').style.bottom = "0%"; }
+
+function getWireSegments(w) {
+    const c1 = components.find(c => c.id === w.from); const c2 = components.find(c => c.id === w.to);
+    if(!c1 || !c2) return [];
+    let p1 = {x: c1.x + c1.pins[c1.pins.length-1].x, y: c1.y + c1.pins[c1.pins.length-1].y};
+    let p2 = {x: c2.x + c2.pins[0].x, y: c2.y + c2.pins[0].y};
+    if(c1.type === 'JUNCTION') p1 = {x:c1.x, y:c1.y};
+    if(c2.type === 'JUNCTION') p2 = {x:c2.x, y:c2.y};
+    if(c1.type.includes('SOURCE')) p1 = {x: c1.x, y: c1.y + (c1.type.includes('24V')?10:-10)};
+    if(c2.type.includes('SOURCE')) p2 = {x: c2.x, y: c2.y + (c2.type.includes('24V')?10:-10)};
+    const midY = p1.y + (p2.y - p1.y) / 2;
+    return [{x1:p1.x,y1:p1.y,x2:p1.x,y2:midY}, {x1:p1.x,y1:midY,x2:p2.x,y2:midY}, {x1:p2.x,y1:midY,x2:p2.x,y2:p2.y}];
+}
+function isPointNearLine(px, py, x1, y1, x2, y2) { const buffer = 5; if (px < Math.min(x1, x2)-buffer || px > Math.max(x1, x2)+buffer || py < Math.min(y1, y2)-buffer || py > Math.max(y1, y2)+buffer) return false; return Math.abs((y2-y1)*px - (x2-x1)*py + x2*y1 - y2*x1) / Math.hypot(y2-y1, x2-x1) < buffer; }
+
+function getClosestPointOnLine(px, py, x1, y1, x2, y2) {
+    const A = px - x1; const B = py - y1; const C = x2 - x1; const D = y2 - y1;
+    const dot = A * C + B * D;
+    const len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq !== 0) param = dot / len_sq;
+    let xx, yy;
+    if (param < 0) { xx = x1; yy = y1; }
+    else if (param > 1) { xx = x2; yy = y2; }
+    else { xx = x1 + param * C; yy = y1 + param * D; }
+    return { x: xx, y: yy };
+}
+
+function autoConnectJunction(junction) {
+    junction.onRail = null; 
+    components.forEach(c => {
+        if(c.type.includes('SOURCE')) {
+            const lineY = c.y + (c.type.includes('24V') ? 10 : -10);
+            if(Math.abs(junction.y - lineY) < 15) { junction.onRail = c.type; junction.y = lineY; }
+        }
+    });
+    if(!junction.onRail) {
+        let wireToSplit = null; let bestPoint = null;
+        for(let w of wires) {
+            let segs = getWireSegments(w);
+            for(let s of segs) {
+                if(isPointNearLine(junction.x, junction.y, s.x1, s.y1, s.x2, s.y2)) {
+                    wireToSplit = w; bestPoint = getClosestPointOnLine(junction.x, junction.y, s.x1, s.y1, s.x2, s.y2); break;
+                }
+            }
+            if(wireToSplit) break;
+        }
+        if(wireToSplit && bestPoint) {
+            junction.x = Math.round(bestPoint.x); junction.y = Math.round(bestPoint.y);
+            wires = wires.filter(w => w !== wireToSplit);
+            wires.push({from: wireToSplit.from, to: junction.id});
+            wires.push({from: junction.id, to: wireToSplit.to});
+        }
+    }
+}
+
+window.addEventListener('keydown', e => { 
+    if(document.activeElement.type === 'text' || document.activeElement.tagName === 'TEXTAREA') return;
+    if(e.key === 'Delete' || e.key === 'Backspace') deleteSelected(); 
+    if((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        if(selectedComps.length > 0) {
+            const selIds = selectedComps.map(c => c.id);
+            const internalWires = wires.filter(w => selIds.includes(w.from) && selIds.includes(w.to));
+            clipboard = JSON.stringify({ comps: selectedComps, wires: internalWires });
+        }
+    }
+    if((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        if(clipboard) {
+            try {
+                const clipData = JSON.parse(clipboard);
+                const idMap = {}; 
+                const newComps = [];
+                clipData.comps.forEach(c => {
+                    const newId = Math.random().toString(36).substr(2, 9);
+                    idMap[c.id] = newId;
+                    const copy = { ...c, id: newId, x: c.x + 20, y: c.y + 20, state:false, coilActive:false, visited:false, inputSignal:false, grounded:false, onRail:null };
+                    newComps.push(copy);
+                    components.push(copy);
+                });
+                clipData.wires.forEach(w => { wires.push({ from: idMap[w.from], to: idMap[w.to] }); });
+                selectedComps = newComps; 
+                updateShaftUI();
+                draw();
+            } catch(err) { console.error("Paste error", err); }
+        }
+    }
+});
+
+canvas.addEventListener('mousedown', e => { 
+    const mx = e.offsetX; 
+    const my = e.offsetY;
+    const shift = e.shiftKey;
+
+    for(let c of components) { 
+        if(c.type.includes('SOURCE')) { 
+            const pinY = c.y + (c.type.includes('24V')?10:-10); 
+            if(Math.hypot(mx-c.x, my-pinY) < 10) { wiringStart={compId:c.id, pinIndex:0}; return; }
+        }
+        else if(c.type === 'JUNCTION') { 
+            if(Math.hypot(mx-c.x, my-c.y) < 10) { wiringStart={compId:c.id, pinIndex:0}; return; }
+        }
+        else { 
+            for(let i=0; i<c.pins.length; i++) { 
+                if(Math.hypot(mx-(c.x+c.pins[i].x), my-(c.y+c.pins[i].y)) < 10) { wiringStart={compId:c.id,pinIndex:i}; return; }
+            }
+        }
+    }
+
+    let clickedComp = components.find(c => Math.abs(mx-c.x)<25 && Math.abs(my-c.y)<25);
+    if(clickedComp) {
+        if (!shift && !isDragging) {
+             if (clickedComp.type === 'NO' || clickedComp.type === 'CALL_BTN' || clickedComp.type.includes('CABIN_BTN')) clickedComp.state = true;
+             else if (clickedComp.type === 'NC') clickedComp.state = !clickedComp.state;
+             updateLogic();
+        }
+        if(shift) { if(selectedComps.includes(clickedComp)) selectedComps = selectedComps.filter(c => c !== clickedComp); else selectedComps.push(clickedComp); }
+        else { if(!selectedComps.includes(clickedComp)) selectedComps = [clickedComp]; }
+        isDragging = true; dragOffset = { x: mx, y: my }; 
+        selectedComps.forEach(c => c.startDrag = {x: c.x, y: c.y});
+        updatePropsUI(); draw(); return;
+    }
+
+    let clickedWire = wires.find(w => getWireSegments(w).some(s => isPointNearLine(mx, my, s.x1, s.y1, s.x2, s.y2)));
+    if(clickedWire) { selectedWire = clickedWire; selectedComps = []; updatePropsUI(); draw(); return; }
+
+    if(!shift) selectedComps = []; 
+    selectionBox = { x: mx, y: my, w: 0, h: 0 };
+    selectedWire = null;
+    updatePropsUI();
+    draw();
+});
+
+canvas.addEventListener('mousemove', e => { 
+    mousePos.x = e.offsetX; 
+    mousePos.y = e.offsetY;
+    
+    if(isDragging && selectedComps.length > 0) {
+        const dx = mousePos.x - dragOffset.x;
+        const dy = mousePos.y - dragOffset.y;
+        selectedComps.forEach(c => {
+            c.x = Math.round((c.startDrag.x + dx) / GRID) * GRID;
+            c.y = Math.round((c.startDrag.y + dy) / GRID) * GRID;
+            if(c.type === 'JUNCTION') c.onRail = null;
+        });
+        draw();
+        return;
+    }
+    if(selectionBox) {
+        selectionBox.w = mousePos.x - selectionBox.x;
+        selectionBox.h = mousePos.y - selectionBox.y;
+        draw();
+    }
+});
+
+const shaft = document.getElementById('shaft');
+window.addEventListener('mousemove', e => {
+    if(draggingShaftLabel) {
+        const rect = shaft.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        let percent = 100 - (y / rect.height * 100);
+        if(percent < 0) percent = 0; if(percent > 100) percent = 100;
+        
+        components.forEach(c => {
+            if(c.type.includes('LIMIT') && c.label === draggingShaftLabel) {
+                c.liftLevel = percent;
+            }
+        });
+        updateShaftUI();
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    draggingShaftLabel = null;
+    draggingShaftButton = null;
+});
+
+canvas.addEventListener('mouseup', e => { 
+    if(wiringStart) {
+        components.forEach(c => {
+            let pinPos = null;
+            if(c.type.includes('SOURCE')) pinPos = {x:c.x, y:c.y+(c.type.includes('24V')?10:-10)};
+            else if(c.type === 'JUNCTION') pinPos = {x:c.x, y:c.y};
+            let hit = false; let targetId = c.id;
+            if(pinPos) { if(Math.hypot(mousePos.x-pinPos.x, mousePos.y-pinPos.y) < 15) hit=true; }
+            else { for(let i=0; i<c.pins.length; i++) { if(Math.hypot(mousePos.x-(c.x+c.pins[i].x), mousePos.y-(c.y+c.pins[i].y)) < 15) hit=true; }}
+            if(hit && c.id !== wiringStart.compId) wires.push({from:wiringStart.compId, to:targetId});
+        });
+        wiringStart = null; updateLogic();
+    }
+    if(selectionBox) {
+        const rx = selectionBox.w < 0 ? selectionBox.x + selectionBox.w : selectionBox.x;
+        const ry = selectionBox.h < 0 ? selectionBox.y + selectionBox.h : selectionBox.y;
+        const rw = Math.abs(selectionBox.w); const rh = Math.abs(selectionBox.h);
+        components.forEach(c => { if(c.x >= rx && c.x <= rx+rw && c.y >= ry && c.y <= ry+rh) { if(!selectedComps.includes(c)) selectedComps.push(c); }});
+        selectionBox = null; updatePropsUI();
+    }
+    if(isDragging) {
+        isDragging = false;
+        selectedComps.forEach(c => {
+            if(c.type === 'JUNCTION') autoConnectJunction(c);
+            if((c.type.includes('NO') && !c.type.includes('LIMIT')) || c.type==='CALL_BTN' || c.type.includes('CABIN_BTN')) c.state = false;
+        });
+        updateLogic();
+    }
+    draw();
+});
+
+function draw() { 
+    ctx.clearRect(0,0,canvas.width, canvas.height); 
+    wires.forEach(w => { 
+        const segs = getWireSegments(w); 
+        if(segs.length===0) return; 
+        const c1 = components.find(c => c.id === w.from); const c2 = components.find(c => c.id === w.to);
+        const has24 = (c1.inputSignal && canConduct(c1)) || (c2.inputSignal && canConduct(c2)) || c1.type==='SOURCE_24V' || c2.type==='SOURCE_24V';
+        const has0 = (c1.grounded && canConduct(c1)) || (c2.grounded && canConduct(c2)) || c1.type==='SOURCE_0V' || c2.type==='SOURCE_0V';
+        let color = '#95a5a6'; 
+        if(has24 && !has0) color = '#e74c3c'; if(!has24 && has0) color = '#2980b9'; if(has24 && has0) color = '#d35400'; 
+        if(w === selectedWire) color = '#2196f3'; 
+        ctx.beginPath(); ctx.moveTo(segs[0].x1, segs[0].y1); 
+        segs.forEach(s => ctx.lineTo(s.x2, s.y2)); 
+        ctx.lineWidth = (w===selectedWire)?4:2; ctx.strokeStyle = color; ctx.stroke(); 
+    }); 
+    if(wiringStart) { 
+        const c = components.find(c => c.id === wiringStart.compId); 
+        let p = {x: c.x, y: c.y}; 
+        if(c.type === 'JUNCTION') p = {x:c.x, y:c.y}; 
+        else if(c.type.includes('SOURCE')) p = {x:c.x, y:c.y + (c.type.includes('24V')?10:-10)}; 
+        else { const pin = c.pins[wiringStart.pinIndex]; p = {x: c.x + pin.x, y: c.y + pin.y}; } 
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mousePos.x, mousePos.y); ctx.strokeStyle='#555'; ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]); 
+    } 
+    components.forEach(c => drawComponent(c)); 
+    if(selectionBox) {
+        ctx.strokeStyle = '#2196f3'; ctx.lineWidth = 1; ctx.setLineDash([5,3]);
+        ctx.strokeRect(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h);
+        ctx.fillStyle = 'rgba(33, 150, 243, 0.1)'; ctx.fillRect(selectionBox.x, selectionBox.y, selectionBox.w, selectionBox.h); ctx.setLineDash([]);
+    }
+}
+
+function drawComponent(c) { 
+    const x = c.x; const y = c.y; 
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.fillStyle = '#000'; 
+    if(selectedComps.includes(c)) { ctx.fillStyle='rgba(33,150,243,0.15)'; ctx.fillRect(x-25,y-25,50,50); ctx.strokeStyle='#2196f3'; } else { ctx.strokeStyle='#2c3e50'; } 
+    c.pins.forEach(p => { ctx.beginPath(); ctx.arc(x+p.x, y+p.y, 3, 0, Math.PI*2); ctx.fillStyle='#5d6d7e'; ctx.fill(); }); 
+    ctx.beginPath(); 
+    if(c.type === 'JUNCTION') { 
+        ctx.arc(x, y, 4, 0, Math.PI*2); 
+        if(c.onRail === 'SOURCE_24V') ctx.fillStyle='#e74c3c'; else if(c.onRail === 'SOURCE_0V') ctx.fillStyle='#2980b9'; else ctx.fillStyle='#000'; 
+        ctx.fill(); 
+    } 
+    else if(c.type.includes('SOURCE')) { 
+        ctx.lineWidth=4; ctx.strokeStyle=c.type.includes('24V')?'#c0392b':'#2980b9'; 
+        ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); 
+        ctx.fillStyle=ctx.strokeStyle; ctx.font="bold 12px Arial"; ctx.fillText(c.label,10,y+(c.type.includes('24V')?-8:15)); 
+        ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+(c.type.includes('24V')?10:-10)); ctx.stroke(); 
+        ctx.beginPath(); ctx.arc(x, y+(c.type.includes('24V')?10:-10), 3, 0, Math.PI*2); ctx.fillStyle='#555'; ctx.fill(); 
+    } else { 
+        if( (c.type.includes('MOTOR') || c.type.includes('DOOR')) && !c.type.includes('SENS') ) { 
+            ctx.fillStyle = c.coilActive ? '#f39c12' : '#fff'; 
+            ctx.beginPath(); ctx.arc(x,y,18,0,Math.PI*2); ctx.fill(); ctx.stroke(); 
+            ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font="bold 12px Arial"; 
+            let text = "M"; if(c.type === 'MOTOR_UP') { text = "M"; ctx.fillText('↑', x+25, y); } else if(c.type === 'MOTOR_DOWN') { text = "M"; ctx.fillText('↓', x+25, y); } else if(c.type === 'DOOR_OPEN') text = "DO"; else if(c.type === 'DOOR_CLOSE') text = "DC";
+            ctx.fillText(text, x, y); 
+            ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y-18); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x,y+18); ctx.lineTo(x,y+20); ctx.stroke(); 
+        } else if(c.type === 'COIL' || c.type === 'TIMER') { 
+            ctx.fillStyle = c.coilActive ? (c.type==='TIMER'?'#d7bde2':'#a9dfbf') : '#fff'; 
+            ctx.fillRect(x-18,y-18,36,36); ctx.strokeRect(x-18,y-18,36,36); 
+            ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font="bold 11px Arial"; ctx.fillText(c.type==='TIMER'?'KT':'K', x, y-5); 
+            if(c.type==='TIMER') { ctx.font="9px Arial"; ctx.fillText(Math.min(c.timerCounter,c.delay).toFixed(1)+"s", x, y+8); } 
+            ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y-18); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x,y+18); ctx.lineTo(x,y+20); ctx.stroke(); 
+        } else if(c.type === 'LAMP') { 
+            ctx.fillStyle = (c.inputSignal && c.grounded) ? '#f1c40f' : '#fff'; 
+            ctx.beginPath(); ctx.arc(x,y,15,0,Math.PI*2); ctx.fill(); ctx.stroke(); 
+            ctx.beginPath(); ctx.moveTo(x-10,y-10); ctx.lineTo(x+10,y+10); ctx.moveTo(x+10,y-10); ctx.lineTo(x-10,y+10); ctx.stroke(); 
+            ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y-15); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x,y+15); ctx.lineTo(x,y+20); ctx.stroke(); 
+        } else {
+            if(c.type.includes('NO') || c.type.includes('NC') || c.type.includes('CALL_BTN') || c.type.includes('CABIN_BTN') || c.type.includes('DOOR_SENS')) { 
+                const isLimit = c.type.includes('LIMIT') || c.type.includes('DOOR_SENS'); 
+                const isCall = c.type === 'CALL_BTN'; 
+                const isCabin = c.type.includes('CABIN_BTN'); 
+                const isNO = c.type.includes('NO') || isCall || isCabin || c.type.includes('DOOR_SENS_CLOSE_NO') || c.type.includes('DOOR_SENS_OPEN_NO'); 
+                ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y-10); ctx.moveTo(x,y+10); ctx.lineTo(x,y+20); ctx.stroke(); 
+                ctx.beginPath(); 
+                let drawClosed = false; if (isNO) drawClosed = c.state; else drawClosed = !c.state; 
+                if(drawClosed) { ctx.strokeStyle='#27ae60'; ctx.lineWidth=3; ctx.moveTo(x,y-10); ctx.lineTo(x,y+10); } else { ctx.strokeStyle='#c0392b'; ctx.lineWidth=3; ctx.moveTo(x-5,y-10); ctx.lineTo(x+8,y+8); } 
+                ctx.stroke(); ctx.lineWidth=2; ctx.strokeStyle='#000'; 
+                if(isNO && !isLimit) { ctx.beginPath(); ctx.moveTo(x+8,y+8); ctx.lineTo(x+15,y+8); ctx.stroke(); } 
+                if(!isNO && !isLimit) { ctx.beginPath(); ctx.moveTo(x+8,y-10); ctx.lineTo(x+15,y-10); ctx.stroke(); } 
+                if(isLimit) { ctx.beginPath(); if(!drawClosed) { ctx.moveTo(x,y-15); ctx.lineTo(x,y-25); ctx.stroke(); ctx.beginPath(); ctx.arc(x,y-28,3,0,Math.PI*2); ctx.stroke(); } else { ctx.moveTo(x,y-15); ctx.lineTo(x,y-25); ctx.stroke(); ctx.beginPath(); ctx.arc(x,y-28,3,0,Math.PI*2); ctx.stroke(); } } 
+                if(isCall) { ctx.beginPath(); ctx.arc(x+20, y, 8, 0, Math.PI*2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke(); ctx.fillStyle = '#000'; ctx.font="bold 10px Arial"; ctx.fillText("O", x+16, y+4); } 
+            }
+        }
+    } 
+    if(!c.type.includes('SOURCE') && c.type !== 'JUNCTION') { ctx.fillStyle='#333'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.font="11px Arial"; ctx.fillText(c.label, x+22, y); } 
+}
+
+function resetCircuit() { if(confirm("Rensa allt?")) { components=[]; wires=[]; selectedComps = []; updateShaftUI(); draw(); }}
+function loop() { updateTimers(); updateLogic(); draw(); requestAnimationFrame(loop); }
+resizeCanvas(); loop();
+</script>
+</body>
+</html>
