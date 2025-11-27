@@ -132,7 +132,6 @@
         .prop-group input, .prop-group select { width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box; font-size: 12px;}
         #prop-desc { font-size: 11px; color: #555; background: #f9f9f9; padding: 5px; border: 1px solid #eee; border-radius: 3px; margin-top: 5px; line-height: 1.3; }
 
-        /* MANUAL MODAL */
         #manual-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;
@@ -149,14 +148,22 @@
         .modal-content ul { padding-left: 20px; font-size: 13px; line-height: 1.5; }
         .modal-content li { margin-bottom: 5px; }
         .key { font-family: monospace; background: #eee; padding: 2px 4px; border-radius: 3px; font-weight: bold; }
+        
+        #collision-alert {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: #e74c3c; color: white; padding: 10px 20px; border-radius: 5px;
+            font-weight: bold; display: none; box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 1000;
+        }
     </style>
 </head>
 <body>
 
+<div id="collision-alert">Kan ej dra kabel genom komponent!</div>
+
 <div id="main-container">
     <div id="sidebar">
         <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
-        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labbet v13.29</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labbet v15</div>
         
         <div style="display:flex; gap:5px; margin-bottom:10px;">
             <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
@@ -170,12 +177,8 @@
         </div>
 
         <h3>Korg & Anrop (NO)</h3>
-        <div class="component-btn" onclick="addComp('CABIN_BTN_1')"><span>[1]</span> Korg-knapp 1 (NO)</div>
-        <div class="component-btn" onclick="addComp('CABIN_BTN_2')"><span>[2]</span> Korg-knapp 2 (NO)</div>
-        <div class="component-btn" onclick="addComp('CABIN_BTN_3')"><span>[3]</span> Korg-knapp 3 (NO)</div>
-        <div class="component-btn" onclick="addComp('CABIN_BTN_4')"><span>[4]</span> Korg-knapp 4 (NO)</div>
-        <div class="component-btn" onclick="addComp('CABIN_BTN_5')"><span>[5]</span> Korg-knapp 5 (NO)</div>
-        <div class="component-btn" onclick="addComp('CALL_BTN')"><span>(O)</span> Vånings-Anrop (NO)</div>
+        <div class="component-btn" onclick="addComp('CABIN_BTN')"><span>[#]</span> Lägg till Korg-knapp</div>
+        <div class="component-btn" onclick="addComp('CALL_BTN')"><span>(O)</span> Lägg till Anrops-knapp</div>
 
         <h3>Manöverdon</h3>
         <div class="component-btn" onclick="addComp('NO')"><span>_/_</span> Startknapp (NO)</div>
@@ -281,9 +284,9 @@
         <h4>2. Kablar & Anslutningar</h4>
         <ul>
             <li><strong>Dra kabel:</strong> Klicka på en anslutningspunkt (grå prick) och dra till en annan.</li>
-            <li><strong>Skarva:</strong> Dra en <strong>Kopplingspunkt (⚫)</strong> och släpp den ovanpå en befintlig kabel eller direkt på 24V/0V-linjerna. Den snäpper fast automatiskt ("Magnet-funktion").</li>
+            <li><strong>Kollision:</strong> Du kan inte dra kablar rakt genom andra komponenter. Skarva istället.</li>
+            <li><strong>Skarva:</strong> Dra en <strong>Kopplingspunkt (⚫)</strong> och släpp den ovanpå en befintlig kabel eller direkt på 24V/0V-linjerna. Den snäpper fast automatiskt.</li>
             <li><strong>Färger:</strong> <span style="color:#e74c3c">Röd</span>=24V, <span style="color:#2980b9">Blå</span>=0V, <span style="color:#d35400; font-weight:bold;">Orange</span>=Sluten Krets (Ström går).</li>
-            <li><strong>OBS:</strong> Förbrukare (lampor, motorer) tänds BARA om de har kontakt med både 24V och 0V.</li>
         </ul>
 
         <h4>3. Hiss-komponenter</h4>
@@ -418,11 +421,10 @@ function createComponent(type, x, y) {
     if (type === 'DOOR_SENS_CLOSE_NC') label = "D_SNC";
     
     if (type.includes('LIMIT')) label = "G1";
-    if (type === 'CALL_BTN') label = "B1";
-    if (type.includes('CABIN_BTN')) label = "C"+type.split('_').pop();
-    
-    if (type === 'SOURCE_24V') { label = "24V"; pins = [{x:0, y:10}]; }
-    if (type === 'SOURCE_0V') { label = "0V"; pins = [{x:0, y:-10}]; }
+
+    // GRID FIX: Align Source pins to grid lines
+    if (type === 'SOURCE_24V') { label = "24V"; pins = [{x:0, y:0}]; } 
+    if (type === 'SOURCE_0V') { label = "0V"; pins = [{x:0, y:0}]; }   
     if (type === 'JUNCTION') { label = ""; pins = [{x:0, y:0}]; }
 
     return { 
@@ -533,7 +535,6 @@ function updateProp(key, val) {
         }
         updateShaftUI(); 
     }
-    
     if(key === 'delay') c.delay = parseFloat(val);
     if(key === 'timerMode') {
         c.timerMode = val;
@@ -687,7 +688,7 @@ function updateVisuals() {
     });
 }
 
-// --- FIX: SHAFT UI CLEANUP ---
+// --- SHAFT UI CLEANUP FIX ---
 function updateShaftUI() {
     const container = document.getElementById('switches-container');
     const limitLabels = [...new Set(components.filter(c => c.type.includes('LIMIT')).map(c => c.label))];
@@ -737,11 +738,33 @@ function getWireSegments(w) {
     let p2 = {x: c2.x + c2.pins[0].x, y: c2.y + c2.pins[0].y};
     if(c1.type === 'JUNCTION') p1 = {x:c1.x, y:c1.y};
     if(c2.type === 'JUNCTION') p2 = {x:c2.x, y:c2.y};
-    if(c1.type.includes('SOURCE')) p1 = {x: c1.x, y: c1.y + (c1.type.includes('24V')?10:-10)};
-    if(c2.type.includes('SOURCE')) p2 = {x: c2.x, y: c2.y + (c2.type.includes('24V')?10:-10)};
-    const midY = p1.y + (p2.y - p1.y) / 2;
+    if(c1.type.includes('SOURCE')) p1 = {x: c1.x, y: c1.y}; // PIN FIX
+    if(c2.type.includes('SOURCE')) p2 = {x: c2.x, y: c2.y}; // PIN FIX
+    
+    // SNAPPING VERTICAL LINES TO GRID
+    // U-KOPPLING FIX (Wire Arc Logic)
+    let midY = p1.y + (p2.y - p1.y) / 2;
+    
+    // Om punkterna är på samma höjd (horisontellt)
+    if (Math.abs(p1.y - p2.y) < 5) {
+        // Kolla om det är vanliga komponenter
+        const isComp1 = !c1.type.includes('SOURCE') && c1.type !== 'JUNCTION';
+        const isComp2 = !c2.type.includes('SOURCE') && c2.type !== 'JUNCTION';
+        
+        if (isComp1 || isComp2) {
+            // Om vi kopplar "nederkant" (y > center), gå ner
+            // Om vi kopplar "överkant" (y < center), gå upp
+            // Antag center är c.y
+            const offset = (p1.y >= c1.y) ? GRID : -GRID;
+            midY = p1.y + offset;
+        }
+    }
+    
+    midY = Math.round(midY / GRID) * GRID;
+    
     return [{x1:p1.x,y1:p1.y,x2:p1.x,y2:midY}, {x1:p1.x,y1:midY,x2:p2.x,y2:midY}, {x1:p2.x,y1:midY,x2:p2.x,y2:p2.y}];
 }
+
 function isPointNearLine(px, py, x1, y1, x2, y2) { const buffer = 5; if (px < Math.min(x1, x2)-buffer || px > Math.max(x1, x2)+buffer || py < Math.min(y1, y2)-buffer || py > Math.max(y1, y2)+buffer) return false; return Math.abs((y2-y1)*px - (x2-x1)*py + x2*y1 - y2*x1) / Math.hypot(y2-y1, x2-x1) < buffer; }
 
 function getClosestPointOnLine(px, py, x1, y1, x2, y2) {
@@ -761,8 +784,10 @@ function autoConnectJunction(junction) {
     junction.onRail = null; 
     components.forEach(c => {
         if(c.type.includes('SOURCE')) {
-            const lineY = c.y + (c.type.includes('24V') ? 10 : -10);
-            if(Math.abs(junction.y - lineY) < 15) { junction.onRail = c.type; junction.y = lineY; }
+            if(Math.abs(junction.y - c.y) < 15) { // FIX: Match exact Y
+                junction.onRail = c.type; 
+                junction.y = c.y; 
+            }
         }
     });
     if(!junction.onRail) {
@@ -783,6 +808,33 @@ function autoConnectJunction(junction) {
             wires.push({from: junction.id, to: wireToSplit.to});
         }
     }
+}
+
+// --- COLLISION CHECK ---
+function isPathClear(p1, p2, ignoreId1, ignoreId2) {
+    // Box for segment
+    const xMin = Math.min(p1.x, p2.x); const xMax = Math.max(p1.x, p2.x);
+    const yMin = Math.min(p1.y, p2.y); const yMax = Math.max(p1.y, p2.y);
+    
+    for(let c of components) {
+        if(c.id === ignoreId1 || c.id === ignoreId2) continue;
+        if(c.type === 'JUNCTION' || c.type.includes('SOURCE')) continue;
+        
+        // Comp Box (Small margin to allow touching pins)
+        const cx = c.x - 15; const cy = c.y - 15;
+        const cw = 30; const ch = 30;
+        
+        // Simple Line-Rect intersection
+        // Vertical line?
+        if(Math.abs(xMin - xMax) < 1) {
+             if(p1.x > cx && p1.x < cx+cw && yMax > cy && yMin < cy+ch) return false;
+        }
+        // Horizontal line?
+        else if(Math.abs(yMin - yMax) < 1) {
+             if(p1.y > cy && p1.y < cy+ch && xMax > cx && xMin < cx+cw) return false;
+        }
+    }
+    return true;
 }
 
 // --- KEYBOARD ---
@@ -826,8 +878,7 @@ canvas.addEventListener('mousedown', e => {
 
     for(let c of components) { 
         if(c.type.includes('SOURCE')) { 
-            const pinY = c.y + (c.type.includes('24V')?10:-10); 
-            if(Math.hypot(mx-c.x, my-pinY) < 10) { wiringStart={compId:c.id, pinIndex:0}; return; }
+            if(Math.hypot(mx-c.x, my-c.y) < 10) { wiringStart={compId:c.id, pinIndex:0}; return; } // PIN FIX
         }
         else if(c.type === 'JUNCTION') { 
             if(Math.hypot(mx-c.x, my-c.y) < 10) { wiringStart={compId:c.id, pinIndex:0}; return; }
@@ -911,12 +962,46 @@ canvas.addEventListener('mouseup', e => {
     if(wiringStart) {
         components.forEach(c => {
             let pinPos = null;
-            if(c.type.includes('SOURCE')) pinPos = {x:c.x, y:c.y+(c.type.includes('24V')?10:-10)};
+            if(c.type.includes('SOURCE')) pinPos = {x:c.x, y:c.y}; // PIN FIX
             else if(c.type === 'JUNCTION') pinPos = {x:c.x, y:c.y};
             let hit = false; let targetId = c.id;
             if(pinPos) { if(Math.hypot(mousePos.x-pinPos.x, mousePos.y-pinPos.y) < 15) hit=true; }
             else { for(let i=0; i<c.pins.length; i++) { if(Math.hypot(mousePos.x-(c.x+c.pins[i].x), mousePos.y-(c.y+c.pins[i].y)) < 15) hit=true; }}
-            if(hit && c.id !== wiringStart.compId) wires.push({from:wiringStart.compId, to:targetId});
+            
+            if(hit && c.id !== wiringStart.compId) {
+                // COLLISION CHECK
+                const startComp = components.find(sc => sc.id === wiringStart.compId);
+                // Calc segments temp
+                let p1 = {x:0, y:0};
+                if(startComp.type.includes('SOURCE')) p1 = {x:startComp.x, y:startComp.y};
+                else if(startComp.type === 'JUNCTION') p1 = {x:startComp.x, y:startComp.y};
+                else { let p = startComp.pins[wiringStart.pinIndex]; p1 = {x:startComp.x+p.x, y:startComp.y+p.y}; }
+                
+                let p2 = {x:0, y:0};
+                if(c.type.includes('SOURCE')) p2 = {x:c.x, y:c.y};
+                else if(c.type === 'JUNCTION') p2 = {x:c.x, y:c.y};
+                else {
+                    // We need to know which pin on target was hit. But here we just use mouse pos roughly snapped
+                    p2 = {x:mousePos.x, y:mousePos.y}; // Approximation sufficient for check
+                }
+                
+                // Snap midY like in getWireSegments
+                const midY = Math.round((p1.y + (p2.y - p1.y) / 2) / GRID) * GRID;
+                
+                const s1 = {x:p1.x, y:p1.y}; const e1 = {x:p1.x, y:midY};
+                const s2 = {x:p1.x, y:midY}; const e2 = {x:p2.x, y:midY};
+                const s3 = {x:p2.x, y:midY}; const e3 = {x:p2.x, y:p2.y};
+                
+                if(isPathClear(s1, e1, startComp.id, c.id) && 
+                   isPathClear(s2, e2, startComp.id, c.id) && 
+                   isPathClear(s3, e3, startComp.id, c.id)) {
+                    wires.push({from:wiringStart.compId, to:targetId});
+                } else {
+                    const alert = document.getElementById('collision-alert');
+                    alert.style.display = 'block';
+                    setTimeout(() => alert.style.display = 'none', 2000);
+                }
+            }
         });
         wiringStart = null; updateLogic();
     }
@@ -957,7 +1042,7 @@ function draw() {
         const c = components.find(c => c.id === wiringStart.compId); 
         let p = {x: c.x, y: c.y}; 
         if(c.type === 'JUNCTION') p = {x:c.x, y:c.y}; 
-        else if(c.type.includes('SOURCE')) p = {x:c.x, y:c.y + (c.type.includes('24V')?10:-10)}; 
+        else if(c.type.includes('SOURCE')) p = {x:c.x, y:c.y}; // PIN FIX
         else { const pin = c.pins[wiringStart.pinIndex]; p = {x: c.x + pin.x, y: c.y + pin.y}; } 
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mousePos.x, mousePos.y); ctx.strokeStyle='#555'; ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]); 
     } 
@@ -985,7 +1070,7 @@ function drawComponent(c) {
         ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); 
         ctx.fillStyle=ctx.strokeStyle; ctx.font="bold 12px Arial"; ctx.fillText(c.label,10,y+(c.type.includes('24V')?-8:15)); 
         ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+(c.type.includes('24V')?10:-10)); ctx.stroke(); 
-        ctx.beginPath(); ctx.arc(x, y+(c.type.includes('24V')?10:-10), 3, 0, Math.PI*2); ctx.fillStyle='#555'; ctx.fill(); 
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fillStyle='#555'; ctx.fill(); // PIN FIX
     } else { 
         if( (c.type.includes('MOTOR') || c.type.includes('DOOR')) && !c.type.includes('SENS') ) { 
             ctx.fillStyle = c.coilActive ? '#f39c12' : '#fff'; 
@@ -1006,6 +1091,7 @@ function drawComponent(c) {
             ctx.beginPath(); ctx.moveTo(x-10,y-10); ctx.lineTo(x+10,y+10); ctx.moveTo(x+10,y-10); ctx.lineTo(x-10,y+10); ctx.stroke(); 
             ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y-15); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x,y+15); ctx.lineTo(x,y+20); ctx.stroke(); 
         } else {
+            // Brytare, Gränslägen, Dörrsensorer
             if(c.type.includes('NO') || c.type.includes('NC') || c.type.includes('CALL_BTN') || c.type.includes('CABIN_BTN') || c.type.includes('DOOR_SENS')) { 
                 const isLimit = c.type.includes('LIMIT') || c.type.includes('DOOR_SENS'); 
                 const isCall = c.type === 'CALL_BTN'; 
@@ -1018,6 +1104,7 @@ function drawComponent(c) {
                 ctx.stroke(); ctx.lineWidth=2; ctx.strokeStyle='#000'; 
                 if(isNO && !isLimit) { ctx.beginPath(); ctx.moveTo(x+8,y+8); ctx.lineTo(x+15,y+8); ctx.stroke(); } 
                 if(!isNO && !isLimit) { ctx.beginPath(); ctx.moveTo(x+8,y-10); ctx.lineTo(x+15,y-10); ctx.stroke(); } 
+                // Gränsläges-symbol (även för Dörr-sensorer)
                 if(isLimit) { ctx.beginPath(); if(!drawClosed) { ctx.moveTo(x,y-15); ctx.lineTo(x,y-25); ctx.stroke(); ctx.beginPath(); ctx.arc(x,y-28,3,0,Math.PI*2); ctx.stroke(); } else { ctx.moveTo(x,y-15); ctx.lineTo(x,y-25); ctx.stroke(); ctx.beginPath(); ctx.arc(x,y-28,3,0,Math.PI*2); ctx.stroke(); } } 
                 if(isCall) { ctx.beginPath(); ctx.arc(x+20, y, 8, 0, Math.PI*2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke(); ctx.fillStyle = '#000'; ctx.font="bold 10px Arial"; ctx.fillText("O", x+16, y+4); } 
             }
