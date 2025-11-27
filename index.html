@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <title>Styrteknik Hiss V15 </title>
+    <title>Styrteknik Hiss V15</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; user-select: none; background: #f0f2f5; }
         #main-container { display: flex; width: 100%; height: 100%; }
@@ -156,7 +156,7 @@
 <div id="main-container">
     <div id="sidebar">
         <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
-        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labbet v15</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labbet v13.29</div>
         
         <div style="display:flex; gap:5px; margin-bottom:10px;">
             <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
@@ -170,8 +170,12 @@
         </div>
 
         <h3>Korg & Anrop (NO)</h3>
-        <div class="component-btn" onclick="addComp('CABIN_BTN')"><span>[#]</span> Lägg till Korg-knapp</div>
-        <div class="component-btn" onclick="addComp('CALL_BTN')"><span>(O)</span> Lägg till Anrops-knapp</div>
+        <div class="component-btn" onclick="addComp('CABIN_BTN_1')"><span>[1]</span> Korg-knapp 1 (NO)</div>
+        <div class="component-btn" onclick="addComp('CABIN_BTN_2')"><span>[2]</span> Korg-knapp 2 (NO)</div>
+        <div class="component-btn" onclick="addComp('CABIN_BTN_3')"><span>[3]</span> Korg-knapp 3 (NO)</div>
+        <div class="component-btn" onclick="addComp('CABIN_BTN_4')"><span>[4]</span> Korg-knapp 4 (NO)</div>
+        <div class="component-btn" onclick="addComp('CABIN_BTN_5')"><span>[5]</span> Korg-knapp 5 (NO)</div>
+        <div class="component-btn" onclick="addComp('CALL_BTN')"><span>(O)</span> Vånings-Anrop (NO)</div>
 
         <h3>Manöverdon</h3>
         <div class="component-btn" onclick="addComp('NO')"><span>_/_</span> Startknapp (NO)</div>
@@ -286,7 +290,7 @@
         <ul>
             <li><strong>G1-G5 (Gränslägen):</strong> Placeras i schaktet för att känna av hissens position. Du kan dra dem upp/ner i schaktet.
                 <br><em>Tips:</em> Om du döper två gränslägen till samma namn (t.ex. "G2"), betraktas de som samma fysiska sensor.</li>
-            <li><strong>B1-B5 (Anropsknappar):</strong> Sitter fast på varje våning. Tryck på dem i schaktet för att simulera att någon vill åka. Systemet fyller automatiskt på saknade knappar (t.ex. om du tar bort B3 och lägger till en ny, blir det B3).</li>
+            <li><strong>B1-B5 (Anropsknappar):</strong> Sitter fast på varje våning. Tryck på dem i schaktet för att simulera att någon vill åka.</li>
             <li><strong>Motorer:</strong> M↑ drar hissen upp, M↓ drar hissen ner.</li>
         </ul>
 
@@ -414,8 +418,9 @@ function createComponent(type, x, y) {
     if (type === 'DOOR_SENS_CLOSE_NC') label = "D_SNC";
     
     if (type.includes('LIMIT')) label = "G1";
-    // Initial labels handled in addComp for Call/Cabin
-
+    if (type === 'CALL_BTN') label = "B1";
+    if (type.includes('CABIN_BTN')) label = "C"+type.split('_').pop();
+    
     if (type === 'SOURCE_24V') { label = "24V"; pins = [{x:0, y:10}]; }
     if (type === 'SOURCE_0V') { label = "0V"; pins = [{x:0, y:-10}]; }
     if (type === 'JUNCTION') { label = ""; pins = [{x:0, y:0}]; }
@@ -431,19 +436,12 @@ function createComponent(type, x, y) {
 
 // --- SMART SLOT FINDER ---
 function getNextAvailableSlot(prefix, typeSubstring) {
-    // Hitta alla knappar av denna typ (B1-B5 eller C1-C5)
-    const used = components
-        .filter(c => c.type.includes(typeSubstring))
-        .map(c => {
-             // Försök hitta siffran i Labeln (t.ex. "B3" -> 3)
-             const num = parseInt(c.label.replace(prefix, ''));
-             return isNaN(num) ? 0 : num;
-        });
-    
-    for(let i=1; i<=5; i++) {
-        if(!used.includes(i)) return i;
-    }
-    return null; // Fullt
+    const used = components.filter(c => c.type.includes(typeSubstring)).map(c => {
+         const num = parseInt(c.label.replace(prefix, ''));
+         return isNaN(num) ? 0 : num;
+    });
+    for(let i=1; i<=5; i++) { if(!used.includes(i)) return i; }
+    return null; 
 }
 
 function addComp(type) {
@@ -454,40 +452,28 @@ function addComp(type) {
     if(type === 'SOURCE_24V') startY = 60;
     if(type === 'SOURCE_0V') startY = wrapper.offsetHeight - 60;
     
-    // --- SMART LOGIK FÖR KNAPPAR ---
     if (type === 'CALL_BTN') {
         const slot = getNextAvailableSlot("B", "CALL_BTN");
         if (slot === null) { alert("Max 5 anropsknappar installerade!"); return; }
-        
         const comp = createComponent(type, startX, startY);
         comp.label = "B" + slot;
-        comp.liftLevel = (slot - 1) * 20 + 8; // Placera på rätt våning
-        components.push(comp);
-        selectedComps = [comp]; 
-        updatePropsUI(); updateShaftUI(); draw();
-        return;
+        comp.liftLevel = (slot - 1) * 20 + 8;
+        components.push(comp); selectedComps = [comp]; updatePropsUI(); updateShaftUI(); draw(); return;
     }
     
     if (type === 'CABIN_BTN') {
         const slot = getNextAvailableSlot("C", "CABIN_BTN");
         if (slot === null) { alert("Max 5 korgknappar installerade!"); return; }
-        
-        // Vi måste skapa rätt typ (CABIN_BTN_1, _2 osv) för att logiken ska funka
         const realType = "CABIN_BTN_" + slot;
         const comp = createComponent(realType, startX, startY);
         comp.label = "C" + slot;
-        components.push(comp);
-        selectedComps = [comp]; 
-        updatePropsUI(); updateShaftUI(); draw();
-        return;
+        components.push(comp); selectedComps = [comp]; updatePropsUI(); updateShaftUI(); draw(); return;
     }
 
-    // Vanliga komponenter
     const comp = createComponent(type, startX, startY);
     if(type.includes('LIMIT')) {
         const count = components.filter(c => c.type === type).length + 1;
         comp.label = "G" + count;
-        // Försök synka höjd om den finns
         const existing = components.find(c => c.type.includes('LIMIT') && c.label === comp.label);
         if(existing) comp.liftLevel = existing.liftLevel;
     }
@@ -538,6 +524,7 @@ function deleteSelected() {
 function updateProp(key, val) {
     if(selectedComps.length !== 1) return;
     const c = selectedComps[0];
+    
     if(key === 'label') { 
         c.label = val; 
         if(c.type.includes('LIMIT')) {
@@ -546,6 +533,7 @@ function updateProp(key, val) {
         }
         updateShaftUI(); 
     }
+    
     if(key === 'delay') c.delay = parseFloat(val);
     if(key === 'timerMode') {
         c.timerMode = val;
@@ -699,14 +687,16 @@ function updateVisuals() {
     });
 }
 
+// --- FIX: SHAFT UI CLEANUP ---
 function updateShaftUI() {
     const container = document.getElementById('switches-container');
     const limitLabels = [...new Set(components.filter(c => c.type.includes('LIMIT')).map(c => c.label))];
     const callBtns = components.filter(c => c.type === 'CALL_BTN');
 
     Array.from(container.children).forEach(el => {
-        if(el.className === 'shaft-switch' && !limitLabels.includes(el.dataset.label)) el.remove();
-        if(el.className === 'floor-btn-visual' && !callBtns.find(c => c.id === el.dataset.id)) el.remove();
+        // FIX: Använd contains istället för exact match för att hantera 'active' class
+        if(el.classList.contains('shaft-switch') && !limitLabels.includes(el.dataset.label)) el.remove();
+        if(el.classList.contains('floor-btn-visual') && !callBtns.find(c => c.id === el.dataset.id)) el.remove();
     });
 
     limitLabels.forEach(lbl => {
@@ -730,7 +720,6 @@ function updateShaftUI() {
             el.className = 'floor-btn-visual';
             el.dataset.id = c.id;
             el.innerText = c.label.replace(" NO", ""); 
-            // INGEN DRAG LISTENER
             el.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); c.state = true; updateLogic(); });
             el.addEventListener('mouseup', (e) => { e.stopPropagation(); c.state = false; updateLogic(); });
             container.appendChild(el);
@@ -796,6 +785,7 @@ function autoConnectJunction(junction) {
     }
 }
 
+// --- KEYBOARD ---
 window.addEventListener('keydown', e => { 
     if(document.activeElement.type === 'text' || document.activeElement.tagName === 'TEXTAREA') return;
     if(e.key === 'Delete' || e.key === 'Backspace') deleteSelected(); 
@@ -828,6 +818,7 @@ window.addEventListener('keydown', e => {
     }
 });
 
+// --- MUSINTERAKTION ---
 canvas.addEventListener('mousedown', e => { 
     const mx = e.offsetX; 
     const my = e.offsetY;
