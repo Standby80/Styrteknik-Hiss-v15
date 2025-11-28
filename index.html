@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <title>Styrteknik Hiss V16</title>
+    <title>Styrteknik Hiss V16 - Smart Routing</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; user-select: none; background: #f0f2f5; }
         #main-container { display: flex; width: 100%; height: 100%; }
@@ -164,7 +164,7 @@
 <div id="main-container">
     <div id="sidebar">
         <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
-        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.7</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.9</div>
         
         <div style="display:flex; gap:5px; margin-bottom:10px;">
             <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
@@ -425,7 +425,7 @@ function createComponent(type, x, y) {
 
     // GRID FIX: Align Source pins to grid lines
     if (type === 'SOURCE_24V') { label = "24V"; pins = [{x:0, y:0}]; } 
-    if (type === 'SOURCE_0V') { label = "0V"; pins = [{x:0, y:0}]; }   
+    if (type === 'SOURCE_0V') { label = "0V"; pins = [{x:0, y:0}]; }    
     if (type === 'JUNCTION') { label = ""; pins = [{x:0, y:0}]; }
 
     return { 
@@ -618,26 +618,17 @@ function updateLogic() {
     updateVisuals();
 }
 
-// --- FIX: DÖRR-LOGIK KORRIGERAD V16.7 ---
-// Nu: D_ÖNC bryter vid 100%, D_SNC bryter vid 0%. Inget "tvärtom".
 function canConduct(c) {
     if (c.type.includes('SOURCE') || c.type === 'JUNCTION') return true;
-    
-    // Förbrukare (Leder inte vidare)
     if (c.type === 'COIL' || c.type === 'TIMER' || c.type === 'LAMP' || 
        ((c.type.includes('MOTOR') || c.type.includes('DOOR')) && !c.type.includes('SENS'))) return false;
     
-    // NO-logik: Leder om state är TRUE
     if (c.type.includes('NO') || c.type.includes('LIMIT_NO') || c.type === 'CALL_BTN' || c.type.includes('CABIN_BTN') || c.type === 'DOOR_SENS_CLOSE_NO' || c.type === 'DOOR_SENS_OPEN_NO') {
         return c.state === true;
     }
-    
-    // NC-logik: Leder om state är FALSE
-    // (Eftersom vi satte state=TRUE när dörren nådde ändläget, så bryter den då. Perfekt!)
     if (c.type.includes('NC') || c.type.includes('LIMIT_NC') || c.type.includes('DOOR_SENS_OPEN_NC') || c.type.includes('DOOR_SENS_CLOSE_NC')) {
         return c.state === false;
     }
-    
     return false;
 }
 
@@ -701,7 +692,6 @@ function updateVisuals() {
     const doorOpenLimit = (doorState >= 100);
     const doorClosedLimit = (doorState <= 0);
     
-    // Uppdatera dörr-sensorernas tillstånd (State = True om villkoret uppfylls)
     components.forEach(c => {
         if(c.type === 'DOOR_SENS_OPEN_NO') c.state = doorOpenLimit;
         if(c.type === 'DOOR_SENS_OPEN_NC') c.state = doorOpenLimit; 
@@ -710,7 +700,6 @@ function updateVisuals() {
     });
 }
 
-// --- SHAFT UI CLEANUP FIX ---
 function updateShaftUI() {
     const container = document.getElementById('switches-container');
     const limitLabels = [...new Set(components.filter(c => c.type.includes('LIMIT')).map(c => c.label))];
@@ -752,50 +741,121 @@ function updateShaftUI() {
 
 function resetLiftPos() { liftPos = 0; doorState = 0; document.getElementById('elevator-car').style.bottom = "0%"; }
 
-// --- RITNING - MED SMART DETOUR FIX OCH TOPP-PRIO ---
+// --- ADVANCED ROUTING ALGORITHM V4 (SHORT-CIRCUIT STUBS) ---
 function getWireSegments(w) {
-    const c1 = components.find(c => c.id === w.from); const c2 = components.find(c => c.id === w.to);
+    const c1 = components.find(c => c.id === w.from);
+    const c2 = components.find(c => c.id === w.to);
     if(!c1 || !c2) return [];
-    let p1 = {x: c1.x + c1.pins[c1.pins.length-1].x, y: c1.y + c1.pins[c1.pins.length-1].y};
-    let p2 = {x: c2.x + c2.pins[0].x, y: c2.y + c2.pins[0].y};
-    if(c1.type === 'JUNCTION') p1 = {x:c1.x, y:c1.y};
-    if(c2.type === 'JUNCTION') p2 = {x:c2.x, y:c2.y};
-    if(c1.type.includes('SOURCE')) p1 = {x: c1.x, y: c1.y};
-    if(c2.type.includes('SOURCE')) p2 = {x: c2.x, y: c2.y};
+
+    const pinIndex1 = (w.fromPin !== undefined) ? w.fromPin : (c1.pins.length - 1);
+    const pinIndex2 = (w.toPin !== undefined) ? w.toPin : 0;
     
-    let midY = p1.y + (p2.y - p1.y) / 2;
-    
-    // SMART STUB LOGIK V2
-    const c1_cy = c1.type === 'JUNCTION' ? c1.y : c1.y;
-    const c2_cy = c2.type === 'JUNCTION' ? c2.y : c2.y;
-    
-    const p1_is_top = p1.y < c1_cy; 
-    const p2_is_top = p2.y < c2_cy;
-    
-    // Om vi startar på topp och ska högre upp -> Gå UPP direkt
-    if (p1_is_top && p2.y < p1.y) {
-        midY = p2.y + (p1.y - p2.y)/2; // Ingen båge ner, bara upp
+    let p1, p2;
+    if (c1.type === 'JUNCTION' || c1.type.includes('SOURCE')) {
+        p1 = {x: c1.x, y: c1.y};
+    } else {
+        const p = c1.pins[pinIndex1];
+        p1 = {x: c1.x + p.x, y: c1.y + p.y};
     }
-    // Om båda är topp -> Tvinga båge uppåt
-    else if (p1_is_top && p2_is_top && Math.abs(p1.y - p2.y) < 20) {
-        midY = Math.min(p1.y, p2.y) - 30; 
+
+    if (c2.type === 'JUNCTION' || c2.type.includes('SOURCE')) {
+        p2 = {x: c2.x, y: c2.y};
+    } else {
+        const p = c2.pins[pinIndex2];
+        p2 = {x: c2.x + p.x, y: c2.y + p.y};
     }
-    // Om båda är botten -> Tvinga båge neråt
-    else if (!p1_is_top && !p2_is_top && Math.abs(p1.y - p2.y) < 20) {
-        midY = Math.max(p1.y, p2.y) + 30;
+
+    // Bestäm riktning ut från komponent (Upp eller Ner)
+    const getStubDir = (c, pAbs) => {
+        if(c.type.includes('SOURCE')) {
+            if(c.type.includes('24V')) return 1; // 24V (topp) -> Ner
+            if(c.type.includes('0V')) return -1; // 0V (botten) -> Upp
+        }
+        if(c.type === 'JUNCTION') return 0;
+        if(pAbs.y < c.y) return -1; // Pinne ovanför mitt -> Upp
+        return 1; // Pinne under mitt -> Ner
+    };
+
+    const dir1 = getStubDir(c1, p1);
+    const dir2 = getStubDir(c2, p2);
+    
+    // Beräkna "Ideal" Limits (40px stubbe)
+    const LIMIT_LEN = 40;
+    const limit1 = (dir1 !== 0) ? p1.y + (dir1 * LIMIT_LEN) : p1.y;
+    const limit2 = (dir2 !== 0) ? p2.y + (dir2 * LIMIT_LEN) : p2.y;
+
+    // Kanal-logik: Försök hitta en medelväg, men om stubben skjuter förbi kanalen, korta stubben.
+    let midY = (limit1 + limit2) / 2;
+    midY = Math.round(midY / GRID) * GRID; // Snap to grid
+
+    // Enkel kollisionskontroll för den horisontella kanalen
+    const isBlocked = (y, xStart, xEnd) => {
+        for(let c of components) {
+            if(c.type==='JUNCTION' || c.type.includes('SOURCE')) continue;
+            if(y > c.y - 20 && y < c.y + 20) {
+                if(Math.max(xStart, xEnd) > c.x - 20 && Math.min(xStart, xEnd) < c.x + 20) return true;
+            }
+        }
+        return false;
+    };
+
+    let attempts = 0;
+    let offset = 0;
+    // Försök hitta en fri kanal
+    while(isBlocked(midY + offset, p1.x, p2.x) && attempts < 10) {
+        offset = (attempts % 2 === 0) ? offset + 20 : offset - 20;
+        attempts++;
+        if(attempts > 0) offset = (attempts % 2 === 0) ? -attempts*10 : attempts*10;
     }
-    // Krock?
-    else if(isPathBlocked(p1, p2)) {
-        const dir = p1_is_top ? -1 : 1;
-        midY = p1.y + (GRID * 2 * dir); 
-    } 
+    midY += offset;
+
+    // Finalize Stub Ends - "Short Circuit Logic"
+    // Om kanalen (midY) ligger "närmare" p1 än limit1 (i rätt riktning), kapa stubben där.
+    // Detta förhindrar loopar när komponenter ligger nära varandra.
+    let s1y = limit1;
+    let s2y = limit2;
+
+    if (dir1 !== 0) {
+        // Om midY ligger i stubbens riktning
+        if (Math.sign(midY - p1.y) === dir1) {
+            // Om midY är närmare än 40px, använd midY som slutpunkt
+            if (Math.abs(midY - p1.y) < Math.abs(limit1 - p1.y)) {
+                s1y = midY;
+            }
+        }
+    }
     
-    midY = Math.round(midY / GRID) * GRID;
+    if (dir2 !== 0) {
+        if (Math.sign(midY - p2.y) === dir2) {
+            if (Math.abs(midY - p2.y) < Math.abs(limit2 - p2.y)) {
+                s2y = midY;
+            }
+        }
+    }
+
+    // Bygg segment
+    const segments = [];
+    const s1 = {x: p1.x, y: s1y};
+    const s2 = {x: p2.x, y: s2y};
+
+    // 1. Start -> Stubbe 1
+    if(p1.x !== s1.x || p1.y !== s1.y) segments.push({x1:p1.x, y1:p1.y, x2:s1.x, y2:s1.y});
     
-    return [{x1:p1.x,y1:p1.y,x2:p1.x,y2:midY}, {x1:p1.x,y1:midY,x2:p2.x,y2:midY}, {x1:p2.x,y1:midY,x2:p2.x,y2:p2.y}];
+    // 2. Stubbe 1 -> Mellanpunkt 1 (s1.x, midY) - (Vertikal resa till kanal om stubben slutade tidigt/sent)
+    if(s1.y !== midY) segments.push({x1:s1.x, y1:s1.y, x2:s1.x, y2:midY});
+    
+    // 3. Mellanpunkt 1 -> Mellanpunkt 2 (s2.x, midY) - (Horisontell kanal)
+    if(s1.x !== s2.x) segments.push({x1:s1.x, y1:midY, x2:s2.x, y2:midY});
+    
+    // 4. Mellanpunkt 2 -> Stubbe 2 (Vertikal resa från kanal)
+    if(midY !== s2.y) segments.push({x1:s2.x, y1:midY, x2:s2.x, y2:s2.y});
+    
+    // 5. Stubbe 2 -> Slut
+    if(s2.x !== p2.x || s2.y !== p2.y) segments.push({x1:s2.x, y1:s2.y, x2:p2.x, y2:p2.y});
+
+    return segments;
 }
 
-// Check if straight line goes through a component
 function isPathBlocked(p1, p2) {
     const x = p1.x; 
     const yMin = Math.min(p1.y, p2.y);
@@ -849,9 +909,11 @@ function autoConnectJunction(junction) {
         }
         if(wireToSplit && bestPoint) {
             junction.x = Math.round(bestPoint.x); junction.y = Math.round(bestPoint.y);
+            const wProps = { ...wireToSplit }; // Bevara pin data om möjligt (svårt vid split, reset to closest)
             wires = wires.filter(w => w !== wireToSplit);
-            wires.push({from: wireToSplit.from, to: junction.id});
-            wires.push({from: junction.id, to: wireToSplit.to});
+            // Vid junction-split: Junction blir "to" för första och "from" för andra. Pins förloras ofta här tyvärr, men junction har inga pins.
+            wires.push({from: wProps.from, fromPin: wProps.fromPin, to: junction.id});
+            wires.push({from: junction.id, to: wProps.to, toPin: wProps.toPin});
         }
     }
 }
@@ -876,7 +938,6 @@ function isPathClear(p1, p2, ignoreId1, ignoreId2) {
     return true;
 }
 
-// --- KEYBOARD ---
 window.addEventListener('keydown', e => { 
     if(document.activeElement.type === 'text' || document.activeElement.tagName === 'TEXTAREA') return;
     if(e.key === 'Delete' || e.key === 'Backspace') deleteSelected(); 
@@ -900,7 +961,7 @@ window.addEventListener('keydown', e => {
                     newComps.push(copy);
                     components.push(copy);
                 });
-                clipData.wires.forEach(w => { wires.push({ from: idMap[w.from], to: idMap[w.to] }); });
+                clipData.wires.forEach(w => { wires.push({ from: idMap[w.from], fromPin: w.fromPin, to: idMap[w.to], toPin: w.toPin }); });
                 selectedComps = newComps; 
                 updateShaftUI();
                 draw();
@@ -999,58 +1060,32 @@ window.addEventListener('mouseup', () => {
 
 canvas.addEventListener('mouseup', e => { 
     if(wiringStart) {
+        let hit = false;
+        let targetId = null;
+        let targetPinIndex = 0;
+
         components.forEach(c => {
             let pinPos = null;
-            if(c.type.includes('SOURCE')) pinPos = {x:c.x, y:c.y}; // PIN FIX
+            if(c.type.includes('SOURCE')) pinPos = {x:c.x, y:c.y};
             else if(c.type === 'JUNCTION') pinPos = {x:c.x, y:c.y};
-            let hit = false; let targetId = c.id;
-            if(pinPos) { if(Math.hypot(mousePos.x-pinPos.x, mousePos.y-pinPos.y) < 15) hit=true; }
-            else { for(let i=0; i<c.pins.length; i++) { if(Math.hypot(mousePos.x-(c.x+c.pins[i].x), mousePos.y-(c.y+c.pins[i].y)) < 15) hit=true; }}
             
-            if(hit && c.id !== wiringStart.compId) {
-                // COLLISION CHECK
-                const startComp = components.find(sc => sc.id === wiringStart.compId);
-                // Calc segments temp
-                let p1 = {x:0, y:0};
-                if(startComp.type.includes('SOURCE')) p1 = {x:startComp.x, y:startComp.y};
-                else if(startComp.type === 'JUNCTION') p1 = {x:startComp.x, y:startComp.y};
-                else { let p = startComp.pins[wiringStart.pinIndex]; p1 = {x:startComp.x+p.x, y:startComp.y+p.y}; }
-                
-                let p2 = {x:0, y:0};
-                if(c.type.includes('SOURCE')) p2 = {x:c.x, y:c.y};
-                else if(c.type === 'JUNCTION') p2 = {x:c.x, y:c.y};
-                else {
-                    p2 = {x:mousePos.x, y:mousePos.y}; 
-                }
-                
-                let midY = p1.y + (p2.y - p1.y) / 2;
-                // FORCE DETOUR IF BLOCKED
-                if(isPathBlocked(p1, p2)) {
-                    const centerY = startComp.y;
-                    const dir = (p1.y < centerY) ? -1 : 1;
-                    midY = p1.y + (GRID * 2 * dir);
-                }
-                else if (Math.abs(p1.y - p2.y) < 5) {
-                    const offset = (p1.y >= startComp.y) ? GRID : -GRID;
-                    midY = p1.y + offset;
-                }
-                midY = Math.round(midY / GRID) * GRID;
-                
-                const s1 = {x:p1.x, y:p1.y}; const e1 = {x:p1.x, y:midY};
-                const s2 = {x:p1.x, y:midY}; const e2 = {x:p2.x, y:midY};
-                const s3 = {x:p2.x, y:midY}; const e3 = {x:p2.x, y:p2.y};
-                
-                if(isPathClear(s1, e1, startComp.id, c.id) && 
-                   isPathClear(s2, e2, startComp.id, c.id) && 
-                   isPathClear(s3, e3, startComp.id, c.id)) {
-                    wires.push({from:wiringStart.compId, to:targetId});
-                } else {
-                    const alert = document.getElementById('collision-alert');
-                    alert.style.display = 'block';
-                    setTimeout(() => alert.style.display = 'none', 2000);
+            if(pinPos) { 
+                if(Math.hypot(mousePos.x-pinPos.x, mousePos.y-pinPos.y) < 15) { hit=true; targetId=c.id; targetPinIndex=0; }
+            } else { 
+                for(let i=0; i<c.pins.length; i++) { 
+                    if(Math.hypot(mousePos.x-(c.x+c.pins[i].x), mousePos.y-(c.y+c.pins[i].y)) < 15) { hit=true; targetId=c.id; targetPinIndex=i; break; }
                 }
             }
         });
+            
+        if(hit && targetId !== wiringStart.compId) {
+            wires.push({
+                from: wiringStart.compId, 
+                fromPin: wiringStart.pinIndex, 
+                to: targetId, 
+                toPin: targetPinIndex
+            });
+        }
         wiringStart = null; updateLogic();
     }
     if(selectionBox) {
@@ -1090,7 +1125,7 @@ function draw() {
         const c = components.find(c => c.id === wiringStart.compId); 
         let p = {x: c.x, y: c.y}; 
         if(c.type === 'JUNCTION') p = {x:c.x, y:c.y}; 
-        else if(c.type.includes('SOURCE')) p = {x:c.x, y:c.y}; // PIN FIX
+        else if(c.type.includes('SOURCE')) p = {x:c.x, y:c.y}; 
         else { const pin = c.pins[wiringStart.pinIndex]; p = {x: c.x + pin.x, y: c.y + pin.y}; } 
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mousePos.x, mousePos.y); ctx.strokeStyle='#555'; ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]); 
     } 
