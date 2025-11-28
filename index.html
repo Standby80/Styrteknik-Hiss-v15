@@ -164,7 +164,7 @@
 <div id="main-container">
     <div id="sidebar">
         <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
-        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.10</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.11</div>
         
         <div style="display:flex; gap:5px; margin-bottom:10px;">
             <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
@@ -1158,14 +1158,24 @@ function draw() {
         const segs = getWireSegments(w); 
         if(segs.length===0) return; 
         const c1 = components.find(c => c.id === w.from); const c2 = components.find(c => c.id === w.to);
+        
+        // Smart Color Logic: Check BOTH ends of the wire
         const p1Idx = (w.fromPin !== undefined) ? w.fromPin : (c1.pins.length - 1);
+        const p2Idx = (w.toPin !== undefined) ? w.toPin : 0;
+        
         const p1Energized = c1.pins[p1Idx] && c1.pins[p1Idx].energized;
         const p1Grounded = c1.pins[p1Idx] && c1.pins[p1Idx].grounded;
         
+        const p2Energized = c2.pins[p2Idx] && c2.pins[p2Idx].energized;
+        const p2Grounded = c2.pins[p2Idx] && c2.pins[p2Idx].grounded;
+        
+        const isEnergized = p1Energized || p2Energized;
+        const isGrounded = p1Grounded || p2Grounded;
+        
         let color = '#95a5a6'; 
-        if(p1Energized && !p1Grounded) color = '#e74c3c'; 
-        if(!p1Energized && p1Grounded) color = '#2980b9'; 
-        if(p1Energized && p1Grounded) color = '#d35400'; 
+        if(isEnergized && !isGrounded) color = '#e74c3c'; 
+        if(!isEnergized && isGrounded) color = '#2980b9'; 
+        if(isEnergized && isGrounded) color = '#d35400'; 
         
         if(w === selectedWire) color = '#2196f3'; 
         ctx.beginPath(); ctx.moveTo(segs[0].x1, segs[0].y1); 
