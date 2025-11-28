@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <title>Styrteknik Hiss V16 - Smart Routing</title>
+    <title>Styrteknik Hiss V16 - Pin Graph Logic</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; user-select: none; background: #f0f2f5; }
         #main-container { display: flex; width: 100%; height: 100%; }
@@ -123,7 +123,7 @@
         .btn-manual { background: #8e44ad; margin-top: 10px; } .btn-manual:hover { background: #9b59b6; }
 
         #properties {
-            position: fixed; top: 60px; right: 300px; width: 220px; background: #fff;
+            position: fixed; bottom: 20px; right: 300px; width: 220px; background: #fff;
             border: 1px solid #ccc; border-radius: 5px; padding: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2); display: none; z-index: 100;
         }
@@ -164,7 +164,7 @@
 <div id="main-container">
     <div id="sidebar">
         <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
-        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.9</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.10</div>
         
         <div style="display:flex; gap:5px; margin-bottom:10px;">
             <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
@@ -571,65 +571,132 @@ function updateTimers() {
     }
 }
 
+// --- NEW PIN-GRAPH ENGINE ---
 function updateLogic() {
-    components.forEach(c => { c.inputSignal = false; c.grounded = false; c.visited = false; });
-    let queue = components.filter(c => c.type === 'SOURCE_24V' || c.onRail === 'SOURCE_24V');
-    queue.forEach(c => c.inputSignal = true);
-    while(queue.length > 0) {
-        let curr = queue.shift();
-        if(curr.visited) continue;
-        curr.visited = true;
-        if(!canConduct(curr)) continue;
-        wires.forEach(w => {
-            let neighbor = null;
-            if(w.from === curr.id) neighbor = components.find(c => c.id === w.to);
-            if(w.to === curr.id) neighbor = components.find(c => c.id === w.from);
-            if(neighbor && !neighbor.visited) { neighbor.inputSignal = true; queue.push(neighbor); }
-        });
+    // 1. Build Adjacency Graph (Nodes = "componentID_pinIndex")
+    const adj = {};
+    
+    function addEdge(n1, n2) {
+        if(!adj[n1]) adj[n1] = [];
+        if(!adj[n2]) adj[n2] = [];
+        adj[n1].push(n2);
+        adj[n2].push(n1);
     }
-    components.forEach(c => c.visited = false); 
-    let queueGround = components.filter(c => c.type === 'SOURCE_0V' || c.onRail === 'SOURCE_0V');
-    queueGround.forEach(c => c.grounded = true);
-    while(queueGround.length > 0) {
-        let curr = queueGround.shift();
-        if(curr.visited) continue;
-        curr.visited = true;
-        if(!canConduct(curr)) continue;
-        wires.forEach(w => {
-            let neighbor = null;
-            if(w.from === curr.id) neighbor = components.find(c => c.id === w.to);
-            if(w.to === curr.id) neighbor = components.find(c => c.id === w.from);
-            if(neighbor && !neighbor.visited) { neighbor.grounded = true; queueGround.push(neighbor); }
-        });
-    }
-    components.forEach(c => {
-        const isActive = c.inputSignal && c.grounded;
-        if (c.type === 'COIL' || c.type === 'TIMER' || c.type.includes('MOTOR') || c.type.includes('DOOR')) {
-            c.coilActive = isActive;
-        }
+
+    // Wires (Always connect Pin to Pin)
+    wires.forEach(w => {
+        const c1 = components.find(c => c.id === w.from);
+        const c2 = components.find(c => c.id === w.to);
+        if(!c1 || !c2) return;
+
+        const p1Idx = (w.fromPin !== undefined) ? w.fromPin : (c1.pins.length - 1);
+        const p2Idx = (w.toPin !== undefined) ? w.toPin : 0;
+
+        const node1 = `${c1.id}_${p1Idx}`;
+        const node2 = `${c2.id}_${p2Idx}`;
+        addEdge(node1, node2);
     });
+
+    // Internal Connections (Based on component state)
     components.forEach(c => {
+        // Init pin states for drawing
+        c.pins.forEach(p => { p.energized = false; p.grounded = false; });
+
+        if(c.pins.length === 2) {
+            let conduct = false;
+            // Only SWITCHES conduct internally based on state for this graph.
+            // LOADS (Coils, Lamps) DO NOT conduct 24V to 0V in this graph traversal 
+            // because we want to detect potential difference across them.
+            if (c.type.includes('NO') || c.type.includes('LIMIT_NO') || c.type === 'CALL_BTN' || c.type.includes('CABIN_BTN') || c.type === 'DOOR_SENS_CLOSE_NO' || c.type === 'DOOR_SENS_OPEN_NO') {
+                conduct = c.state;
+            } else if (c.type.includes('NC') || c.type.includes('LIMIT_NC') || c.type.includes('DOOR_SENS_OPEN_NC') || c.type.includes('DOOR_SENS_CLOSE_NC')) {
+                conduct = !c.state;
+            }
+            
+            if(conduct) {
+                addEdge(`${c.id}_0`, `${c.id}_1`);
+            }
+        }
+        // Junctions are technically single nodes (1 pin), but if we had multi-pin junctions, they'd short here.
+    });
+
+    // 2. BFS for 24V
+    const energized = new Set();
+    const queue24 = [];
+    
+    components.filter(c => c.type === 'SOURCE_24V' || c.onRail === 'SOURCE_24V').forEach(c => {
+        const node = `${c.id}_0`;
+        energized.add(node);
+        queue24.push(node);
+    });
+
+    while(queue24.length > 0) {
+        const curr = queue24.shift();
+        if(adj[curr]) {
+            adj[curr].forEach(next => {
+                if(!energized.has(next)) {
+                    energized.add(next);
+                    queue24.push(next);
+                }
+            });
+        }
+    }
+
+    // 3. BFS for 0V
+    const grounded = new Set();
+    const queue0 = [];
+    
+    components.filter(c => c.type === 'SOURCE_0V' || c.onRail === 'SOURCE_0V').forEach(c => {
+        const node = `${c.id}_0`;
+        grounded.add(node);
+        queue0.push(node);
+    });
+
+    while(queue0.length > 0) {
+        const curr = queue0.shift();
+        if(adj[curr]) {
+            adj[curr].forEach(next => {
+                if(!grounded.has(next)) {
+                    grounded.add(next);
+                    queue0.push(next);
+                }
+            });
+        }
+    }
+
+    // 4. Update Component States & Pin States
+    components.forEach(c => {
+        c.inputSignal = false; 
+        c.grounded = false;    
+        
+        // Update Pin Objects for Draw
+        c.pins.forEach((p, idx) => {
+            if(energized.has(`${c.id}_${idx}`)) p.energized = true;
+            if(grounded.has(`${c.id}_${idx}`)) p.grounded = true;
+        });
+
+        // Determine if component is "powered" (Potential Difference)
+        if (c.type === 'COIL' || c.type === 'TIMER' || c.type.includes('MOTOR') || c.type.includes('DOOR') || c.type === 'LAMP') {
+            const p0_24 = energized.has(`${c.id}_0`);
+            const p1_0 = grounded.has(`${c.id}_1`);
+            const p1_24 = energized.has(`${c.id}_1`);
+            const p0_0 = grounded.has(`${c.id}_0`);
+            
+            c.coilActive = (p0_24 && p1_0) || (p1_24 && p0_0);
+            
+            // Legacy properties for drawing simple components
+            if(c.coilActive) { c.inputSignal = true; c.grounded = true; }
+        }
+        
+        // Update Contacts driven by Coils
         if (c.type.includes('CONTACT')) {
             const master = components.find(m => (m.type === 'COIL' || m.type === 'TIMER') && m.label === c.label);
             if (master) { c.state = (master.type === 'TIMER') ? master.timerOutput : master.coilActive; }
             else c.state = false;
         }
     });
-    updateVisuals();
-}
-
-function canConduct(c) {
-    if (c.type.includes('SOURCE') || c.type === 'JUNCTION') return true;
-    if (c.type === 'COIL' || c.type === 'TIMER' || c.type === 'LAMP' || 
-       ((c.type.includes('MOTOR') || c.type.includes('DOOR')) && !c.type.includes('SENS'))) return false;
     
-    if (c.type.includes('NO') || c.type.includes('LIMIT_NO') || c.type === 'CALL_BTN' || c.type.includes('CABIN_BTN') || c.type === 'DOOR_SENS_CLOSE_NO' || c.type === 'DOOR_SENS_OPEN_NO') {
-        return c.state === true;
-    }
-    if (c.type.includes('NC') || c.type.includes('LIMIT_NC') || c.type.includes('DOOR_SENS_OPEN_NC') || c.type.includes('DOOR_SENS_CLOSE_NC')) {
-        return c.state === false;
-    }
-    return false;
+    updateVisuals();
 }
 
 function updateVisuals() {
@@ -765,30 +832,26 @@ function getWireSegments(w) {
         p2 = {x: c2.x + p.x, y: c2.y + p.y};
     }
 
-    // Bestäm riktning ut från komponent (Upp eller Ner)
     const getStubDir = (c, pAbs) => {
         if(c.type.includes('SOURCE')) {
-            if(c.type.includes('24V')) return 1; // 24V (topp) -> Ner
-            if(c.type.includes('0V')) return -1; // 0V (botten) -> Upp
+            if(c.type.includes('24V')) return 1; 
+            if(c.type.includes('0V')) return -1;
         }
         if(c.type === 'JUNCTION') return 0;
-        if(pAbs.y < c.y) return -1; // Pinne ovanför mitt -> Upp
-        return 1; // Pinne under mitt -> Ner
+        if(pAbs.y < c.y) return -1; 
+        return 1; 
     };
 
     const dir1 = getStubDir(c1, p1);
     const dir2 = getStubDir(c2, p2);
     
-    // Beräkna "Ideal" Limits (40px stubbe)
     const LIMIT_LEN = 40;
     const limit1 = (dir1 !== 0) ? p1.y + (dir1 * LIMIT_LEN) : p1.y;
     const limit2 = (dir2 !== 0) ? p2.y + (dir2 * LIMIT_LEN) : p2.y;
 
-    // Kanal-logik: Försök hitta en medelväg, men om stubben skjuter förbi kanalen, korta stubben.
     let midY = (limit1 + limit2) / 2;
-    midY = Math.round(midY / GRID) * GRID; // Snap to grid
+    midY = Math.round(midY / GRID) * GRID; 
 
-    // Enkel kollisionskontroll för den horisontella kanalen
     const isBlocked = (y, xStart, xEnd) => {
         for(let c of components) {
             if(c.type==='JUNCTION' || c.type.includes('SOURCE')) continue;
@@ -801,7 +864,6 @@ function getWireSegments(w) {
 
     let attempts = 0;
     let offset = 0;
-    // Försök hitta en fri kanal
     while(isBlocked(midY + offset, p1.x, p2.x) && attempts < 10) {
         offset = (attempts % 2 === 0) ? offset + 20 : offset - 20;
         attempts++;
@@ -809,16 +871,11 @@ function getWireSegments(w) {
     }
     midY += offset;
 
-    // Finalize Stub Ends - "Short Circuit Logic"
-    // Om kanalen (midY) ligger "närmare" p1 än limit1 (i rätt riktning), kapa stubben där.
-    // Detta förhindrar loopar när komponenter ligger nära varandra.
     let s1y = limit1;
     let s2y = limit2;
 
     if (dir1 !== 0) {
-        // Om midY ligger i stubbens riktning
         if (Math.sign(midY - p1.y) === dir1) {
-            // Om midY är närmare än 40px, använd midY som slutpunkt
             if (Math.abs(midY - p1.y) < Math.abs(limit1 - p1.y)) {
                 s1y = midY;
             }
@@ -833,24 +890,14 @@ function getWireSegments(w) {
         }
     }
 
-    // Bygg segment
     const segments = [];
     const s1 = {x: p1.x, y: s1y};
     const s2 = {x: p2.x, y: s2y};
 
-    // 1. Start -> Stubbe 1
     if(p1.x !== s1.x || p1.y !== s1.y) segments.push({x1:p1.x, y1:p1.y, x2:s1.x, y2:s1.y});
-    
-    // 2. Stubbe 1 -> Mellanpunkt 1 (s1.x, midY) - (Vertikal resa till kanal om stubben slutade tidigt/sent)
     if(s1.y !== midY) segments.push({x1:s1.x, y1:s1.y, x2:s1.x, y2:midY});
-    
-    // 3. Mellanpunkt 1 -> Mellanpunkt 2 (s2.x, midY) - (Horisontell kanal)
     if(s1.x !== s2.x) segments.push({x1:s1.x, y1:midY, x2:s2.x, y2:midY});
-    
-    // 4. Mellanpunkt 2 -> Stubbe 2 (Vertikal resa från kanal)
     if(midY !== s2.y) segments.push({x1:s2.x, y1:midY, x2:s2.x, y2:s2.y});
-    
-    // 5. Stubbe 2 -> Slut
     if(s2.x !== p2.x || s2.y !== p2.y) segments.push({x1:s2.x, y1:s2.y, x2:p2.x, y2:p2.y});
 
     return segments;
@@ -909,9 +956,8 @@ function autoConnectJunction(junction) {
         }
         if(wireToSplit && bestPoint) {
             junction.x = Math.round(bestPoint.x); junction.y = Math.round(bestPoint.y);
-            const wProps = { ...wireToSplit }; // Bevara pin data om möjligt (svårt vid split, reset to closest)
+            const wProps = { ...wireToSplit }; 
             wires = wires.filter(w => w !== wireToSplit);
-            // Vid junction-split: Junction blir "to" för första och "from" för andra. Pins förloras ofta här tyvärr, men junction har inga pins.
             wires.push({from: wProps.from, fromPin: wProps.fromPin, to: junction.id});
             wires.push({from: junction.id, to: wProps.to, toPin: wProps.toPin});
         }
@@ -1112,10 +1158,15 @@ function draw() {
         const segs = getWireSegments(w); 
         if(segs.length===0) return; 
         const c1 = components.find(c => c.id === w.from); const c2 = components.find(c => c.id === w.to);
-        const has24 = (c1.inputSignal && canConduct(c1)) || (c2.inputSignal && canConduct(c2)) || c1.type==='SOURCE_24V' || c2.type==='SOURCE_24V';
-        const has0 = (c1.grounded && canConduct(c1)) || (c2.grounded && canConduct(c2)) || c1.type==='SOURCE_0V' || c2.type==='SOURCE_0V';
+        const p1Idx = (w.fromPin !== undefined) ? w.fromPin : (c1.pins.length - 1);
+        const p1Energized = c1.pins[p1Idx] && c1.pins[p1Idx].energized;
+        const p1Grounded = c1.pins[p1Idx] && c1.pins[p1Idx].grounded;
+        
         let color = '#95a5a6'; 
-        if(has24 && !has0) color = '#e74c3c'; if(!has24 && has0) color = '#2980b9'; if(has24 && has0) color = '#d35400'; 
+        if(p1Energized && !p1Grounded) color = '#e74c3c'; 
+        if(!p1Energized && p1Grounded) color = '#2980b9'; 
+        if(p1Energized && p1Grounded) color = '#d35400'; 
+        
         if(w === selectedWire) color = '#2196f3'; 
         ctx.beginPath(); ctx.moveTo(segs[0].x1, segs[0].y1); 
         segs.forEach(s => ctx.lineTo(s.x2, s.y2)); 
