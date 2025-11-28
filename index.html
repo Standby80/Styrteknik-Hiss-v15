@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <title>Styrteknik Hiss V15</title>
+    <title>Hiss-Simulator v13.36 (Dörrsensor Fix)</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; user-select: none; background: #f0f2f5; }
         #main-container { display: flex; width: 100%; height: 100%; }
@@ -132,6 +132,7 @@
         .prop-group input, .prop-group select { width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box; font-size: 12px;}
         #prop-desc { font-size: 11px; color: #555; background: #f9f9f9; padding: 5px; border: 1px solid #eee; border-radius: 3px; margin-top: 5px; line-height: 1.3; }
 
+        /* MANUAL MODAL */
         #manual-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;
@@ -163,7 +164,7 @@
 <div id="main-container">
     <div id="sidebar">
         <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
-        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labbet v15</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labbet v13.36</div>
         
         <div style="display:flex; gap:5px; margin-bottom:10px;">
             <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
@@ -632,6 +633,9 @@ function updateVisuals() {
         if(c.type === 'MOTOR_DOWN' && c.coilActive) mDn = true;
         if(c.type === 'DOOR_OPEN' && c.coilActive) dOpen = true;
         if(c.type === 'DOOR_CLOSE' && c.coilActive) dClose = true;
+        
+        // SÄKERHETS-FIX: ÖPPNA VINNER
+        if(dOpen && dClose) { dClose = false; } 
     });
 
     if(mUp && liftPos < 95) liftPos += liftSpeed;
@@ -680,11 +684,19 @@ function updateVisuals() {
         if(comp && comp.state) el.classList.add('pressed'); else el.classList.remove('pressed');
     });
 
+    // FIX: DÖRR-SENSOR LOGIK
     const doorOpenLimit = (doorState >= 100);
     const doorClosedLimit = (doorState <= 0);
     components.forEach(c => {
-        if(c.type.includes('DOOR_SENS_OPEN')) c.state = doorOpenLimit;
-        if(c.type.includes('DOOR_SENS_CLOSE')) c.state = doorClosedLimit; 
+        // Öppen NO: Sluten (true) om dörr 100% öppen
+        if(c.type === 'DOOR_SENS_OPEN_NO') c.state = doorOpenLimit;
+        // Öppen NC: Bryter (false) om dörr 100% öppen, annars sluten
+        if(c.type === 'DOOR_SENS_OPEN_NC') c.state = !doorOpenLimit;
+
+        // Stängd NO: Sluten (true) om dörr 0% (helt stängd)
+        if(c.type === 'DOOR_SENS_CLOSE_NO') c.state = doorClosedLimit;
+        // Stängd NC: Bryter (false) om dörr 0% (helt stängd), annars sluten
+        if(c.type === 'DOOR_SENS_CLOSE_NC') c.state = !doorClosedLimit;
     });
 }
 
@@ -695,7 +707,6 @@ function updateShaftUI() {
     const callBtns = components.filter(c => c.type === 'CALL_BTN');
 
     Array.from(container.children).forEach(el => {
-        // FIX: Använd contains istället för exact match för att hantera 'active' class
         if(el.classList.contains('shaft-switch') && !limitLabels.includes(el.dataset.label)) el.remove();
         if(el.classList.contains('floor-btn-visual') && !callBtns.find(c => c.id === el.dataset.id)) el.remove();
     });
@@ -731,6 +742,7 @@ function updateShaftUI() {
 
 function resetLiftPos() { liftPos = 0; doorState = 0; document.getElementById('elevator-car').style.bottom = "0%"; }
 
+// --- RITNING - MED SMART DETOUR FIX ---
 function getWireSegments(w) {
     const c1 = components.find(c => c.id === w.from); const c2 = components.find(c => c.id === w.to);
     if(!c1 || !c2) return [];
@@ -738,23 +750,21 @@ function getWireSegments(w) {
     let p2 = {x: c2.x + c2.pins[0].x, y: c2.y + c2.pins[0].y};
     if(c1.type === 'JUNCTION') p1 = {x:c1.x, y:c1.y};
     if(c2.type === 'JUNCTION') p2 = {x:c2.x, y:c2.y};
-    if(c1.type.includes('SOURCE')) p1 = {x: c1.x, y: c1.y}; // PIN FIX
-    if(c2.type.includes('SOURCE')) p2 = {x: c2.x, y: c2.y}; // PIN FIX
+    if(c1.type.includes('SOURCE')) p1 = {x: c1.x, y: c1.y};
+    if(c2.type.includes('SOURCE')) p2 = {x: c2.x, y: c2.y};
     
-    // SNAPPING VERTICAL LINES TO GRID
-    // U-KOPPLING FIX (Wire Arc Logic)
     let midY = p1.y + (p2.y - p1.y) / 2;
     
-    // Om punkterna är på samma höjd (horisontellt)
-    if (Math.abs(p1.y - p2.y) < 5) {
-        // Kolla om det är vanliga komponenter
+    // HÄR ÄR FIXEN: GÅ RUNT OM DET BEHÖVS (DETOUR)
+    if(isPathBlocked(p1, p2)) {
+        const centerY = c1.y;
+        const dir = (p1.y < centerY) ? -1 : 1;
+        midY = p1.y + (GRID * 2 * dir); 
+    } 
+    else if (Math.abs(p1.y - p2.y) < 5) {
         const isComp1 = !c1.type.includes('SOURCE') && c1.type !== 'JUNCTION';
         const isComp2 = !c2.type.includes('SOURCE') && c2.type !== 'JUNCTION';
-        
         if (isComp1 || isComp2) {
-            // Om vi kopplar "nederkant" (y > center), gå ner
-            // Om vi kopplar "överkant" (y < center), gå upp
-            // Antag center är c.y
             const offset = (p1.y >= c1.y) ? GRID : -GRID;
             midY = p1.y + offset;
         }
@@ -763,6 +773,20 @@ function getWireSegments(w) {
     midY = Math.round(midY / GRID) * GRID;
     
     return [{x1:p1.x,y1:p1.y,x2:p1.x,y2:midY}, {x1:p1.x,y1:midY,x2:p2.x,y2:midY}, {x1:p2.x,y1:midY,x2:p2.x,y2:p2.y}];
+}
+
+// Check if straight line goes through a component
+function isPathBlocked(p1, p2) {
+    const x = p1.x; // Vertikal linje (nästan)
+    const yMin = Math.min(p1.y, p2.y);
+    const yMax = Math.max(p1.y, p2.y);
+    
+    for(let c of components) {
+        if(c.type === 'JUNCTION' || c.type.includes('SOURCE')) continue;
+        // Om linjen skär rakt igenom komponentens "kropp"
+        if(Math.abs(c.x - x) < 15 && c.y > yMin && c.y < yMax) return true;
+    }
+    return false;
 }
 
 function isPointNearLine(px, py, x1, y1, x2, y2) { const buffer = 5; if (px < Math.min(x1, x2)-buffer || px > Math.max(x1, x2)+buffer || py < Math.min(y1, y2)-buffer || py > Math.max(y1, y2)+buffer) return false; return Math.abs((y2-y1)*px - (x2-x1)*py + x2*y1 - y2*x1) / Math.hypot(y2-y1, x2-x1) < buffer; }
@@ -810,26 +834,19 @@ function autoConnectJunction(junction) {
     }
 }
 
-// --- COLLISION CHECK ---
+// --- COLLISION CHECK (PREVENT DRAWING THROUGH) ---
 function isPathClear(p1, p2, ignoreId1, ignoreId2) {
-    // Box for segment
     const xMin = Math.min(p1.x, p2.x); const xMax = Math.max(p1.x, p2.x);
     const yMin = Math.min(p1.y, p2.y); const yMax = Math.max(p1.y, p2.y);
     
     for(let c of components) {
         if(c.id === ignoreId1 || c.id === ignoreId2) continue;
         if(c.type === 'JUNCTION' || c.type.includes('SOURCE')) continue;
+        const cx = c.x - 15; const cy = c.y - 15; const cw = 30; const ch = 30;
         
-        // Comp Box (Small margin to allow touching pins)
-        const cx = c.x - 15; const cy = c.y - 15;
-        const cw = 30; const ch = 30;
-        
-        // Simple Line-Rect intersection
-        // Vertical line?
         if(Math.abs(xMin - xMax) < 1) {
              if(p1.x > cx && p1.x < cx+cw && yMax > cy && yMin < cy+ch) return false;
         }
-        // Horizontal line?
         else if(Math.abs(yMin - yMax) < 1) {
              if(p1.y > cy && p1.y < cy+ch && xMax > cx && xMin < cx+cw) return false;
         }
@@ -981,12 +998,21 @@ canvas.addEventListener('mouseup', e => {
                 if(c.type.includes('SOURCE')) p2 = {x:c.x, y:c.y};
                 else if(c.type === 'JUNCTION') p2 = {x:c.x, y:c.y};
                 else {
-                    // We need to know which pin on target was hit. But here we just use mouse pos roughly snapped
-                    p2 = {x:mousePos.x, y:mousePos.y}; // Approximation sufficient for check
+                    p2 = {x:mousePos.x, y:mousePos.y}; 
                 }
                 
-                // Snap midY like in getWireSegments
-                const midY = Math.round((p1.y + (p2.y - p1.y) / 2) / GRID) * GRID;
+                let midY = p1.y + (p2.y - p1.y) / 2;
+                if(Math.abs(p1.y - p2.y) < 5) {
+                    const offset = (p1.y >= startComp.y) ? GRID : -GRID;
+                    midY = p1.y + offset;
+                }
+                // FORCE DETOUR IF BLOCKED
+                if(isPathBlocked(p1, p2)) {
+                    const centerY = startComp.y;
+                    const dir = (p1.y < centerY) ? -1 : 1;
+                    midY = p1.y + (GRID * 2 * dir);
+                }
+                midY = Math.round(midY / GRID) * GRID;
                 
                 const s1 = {x:p1.x, y:p1.y}; const e1 = {x:p1.x, y:midY};
                 const s2 = {x:p1.x, y:midY}; const e2 = {x:p2.x, y:midY};
@@ -1091,7 +1117,6 @@ function drawComponent(c) {
             ctx.beginPath(); ctx.moveTo(x-10,y-10); ctx.lineTo(x+10,y+10); ctx.moveTo(x+10,y-10); ctx.lineTo(x-10,y+10); ctx.stroke(); 
             ctx.beginPath(); ctx.moveTo(x,y-20); ctx.lineTo(x,y-15); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x,y+15); ctx.lineTo(x,y+20); ctx.stroke(); 
         } else {
-            // Brytare, Gränslägen, Dörrsensorer
             if(c.type.includes('NO') || c.type.includes('NC') || c.type.includes('CALL_BTN') || c.type.includes('CABIN_BTN') || c.type.includes('DOOR_SENS')) { 
                 const isLimit = c.type.includes('LIMIT') || c.type.includes('DOOR_SENS'); 
                 const isCall = c.type === 'CALL_BTN'; 
@@ -1104,7 +1129,6 @@ function drawComponent(c) {
                 ctx.stroke(); ctx.lineWidth=2; ctx.strokeStyle='#000'; 
                 if(isNO && !isLimit) { ctx.beginPath(); ctx.moveTo(x+8,y+8); ctx.lineTo(x+15,y+8); ctx.stroke(); } 
                 if(!isNO && !isLimit) { ctx.beginPath(); ctx.moveTo(x+8,y-10); ctx.lineTo(x+15,y-10); ctx.stroke(); } 
-                // Gränsläges-symbol (även för Dörr-sensorer)
                 if(isLimit) { ctx.beginPath(); if(!drawClosed) { ctx.moveTo(x,y-15); ctx.lineTo(x,y-25); ctx.stroke(); ctx.beginPath(); ctx.arc(x,y-28,3,0,Math.PI*2); ctx.stroke(); } else { ctx.moveTo(x,y-15); ctx.lineTo(x,y-25); ctx.stroke(); ctx.beginPath(); ctx.arc(x,y-28,3,0,Math.PI*2); ctx.stroke(); } } 
                 if(isCall) { ctx.beginPath(); ctx.arc(x+20, y, 8, 0, Math.PI*2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke(); ctx.fillStyle = '#000'; ctx.font="bold 10px Arial"; ctx.fillText("O", x+16, y+4); } 
             }
