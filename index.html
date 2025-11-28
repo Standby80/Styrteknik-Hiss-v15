@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <title>Styrteknik Hiss V16 - Pin Graph Logic</title>
+    <title>Styrteknik Hiss V16.13 - Complete</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; user-select: none; background: #f0f2f5; }
         #main-container { display: flex; width: 100%; height: 100%; }
@@ -164,11 +164,11 @@
 <div id="main-container">
     <div id="sidebar">
         <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; color:#fff;">PRAKTISK MEKATRONIK</div>
-        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.11</div>
+        <div style="text-align:center; font-size:10px; color:#bdc3c7; margin-bottom:10px;">Hiss-Labb v16.13</div>
         
         <div style="display:flex; gap:5px; margin-bottom:10px;">
-            <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara</button>
-            <button class="action-btn btn-load" onclick="document.getElementById('fileInput').click()">📂 Öppna</button>
+            <button class="action-btn btn-save" onclick="downloadCircuit()">💾 Spara Fil</button>
+            <button class="action-btn btn-load" onclick="document.getElementById('fileInput').click()">📂 Öppna Fil</button>
         </div>
         <input type="file" id="fileInput" accept=".json" onchange="uploadCircuit(this)" style="display:none">
 
@@ -358,6 +358,12 @@ let doorState = 0; const DOOR_SPEED = 1.0;
 let draggingShaftLabel = null;
 let draggingShaftButton = null;
 
+// --- AUTOSAVE HELPER ---
+function saveToLocalStorage() {
+    const data = JSON.stringify({ components, wires });
+    localStorage.setItem('hiss_data', data);
+}
+
 function updateSpeed(val) {
     liftSpeed = val / 10;
     document.getElementById('speed-val').innerText = liftSpeed + "x";
@@ -393,6 +399,7 @@ function uploadCircuit(input) {
                 components = data.components; wires = data.wires;
                 components.forEach(c => { c.state=false; c.inputSignal=false; c.grounded=false; c.timerCounter=0; c.coilActive=false; c.visited=false; });
                 selectedComps = []; selectedWire = null; updateShaftUI(); draw();
+                saveToLocalStorage(); // SPARA EFTER LADDNING
             }
         } catch(err) { alert("Felaktig fil!"); }
     };
@@ -461,7 +468,9 @@ function addComp(type) {
         const comp = createComponent(type, startX, startY);
         comp.label = "B" + slot;
         comp.liftLevel = (slot - 1) * 20 + 8;
-        components.push(comp); selectedComps = [comp]; updatePropsUI(); updateShaftUI(); draw(); return;
+        components.push(comp); selectedComps = [comp]; updatePropsUI(); updateShaftUI(); draw(); 
+        saveToLocalStorage(); // SPARA EFTER TILLÄGG
+        return;
     }
     
     if (type === 'CABIN_BTN') {
@@ -470,7 +479,9 @@ function addComp(type) {
         const realType = "CABIN_BTN_" + slot;
         const comp = createComponent(realType, startX, startY);
         comp.label = "C" + slot;
-        components.push(comp); selectedComps = [comp]; updatePropsUI(); updateShaftUI(); draw(); return;
+        components.push(comp); selectedComps = [comp]; updatePropsUI(); updateShaftUI(); draw(); 
+        saveToLocalStorage(); // SPARA EFTER TILLÄGG
+        return;
     }
 
     const comp = createComponent(type, startX, startY);
@@ -486,6 +497,7 @@ function addComp(type) {
     if(comp.type === 'JUNCTION') autoConnectJunction(comp);
     updatePropsUI();
     updateShaftUI(); draw();
+    saveToLocalStorage(); // SPARA EFTER TILLÄGG
 }
 
 function updatePropsUI() {
@@ -522,6 +534,7 @@ function deleteSelected() {
         updateShaftUI();
     } else if (selectedWire) { wires = wires.filter(w => w !== selectedWire); selectedWire = null; }
     updatePropsUI(); draw();
+    saveToLocalStorage(); // SPARA EFTER RADERING
 }
 
 function updateProp(key, val) {
@@ -543,6 +556,7 @@ function updateProp(key, val) {
         updatePropsUI(); 
     }
     draw();
+    saveToLocalStorage(); // SPARA EFTER ÄNDRING
 }
 
 function updateTimers() {
@@ -1011,6 +1025,7 @@ window.addEventListener('keydown', e => {
                 selectedComps = newComps; 
                 updateShaftUI();
                 draw();
+                saveToLocalStorage(); // SPARA EFTER PASTE
             } catch(err) { console.error("Paste error", err); }
         }
     }
@@ -1131,6 +1146,7 @@ canvas.addEventListener('mouseup', e => {
                 to: targetId, 
                 toPin: targetPinIndex
             });
+            saveToLocalStorage(); // SPARA EFTER KABELDRAGNING
         }
         wiringStart = null; updateLogic();
     }
@@ -1148,6 +1164,7 @@ canvas.addEventListener('mouseup', e => {
             if((c.type.includes('NO') && !c.type.includes('LIMIT')) || c.type==='CALL_BTN' || c.type.includes('CABIN_BTN')) c.state = false;
         });
         updateLogic();
+        saveToLocalStorage(); // SPARA EFTER DRAGNING
     }
     draw();
 });
@@ -1255,9 +1272,40 @@ function drawComponent(c) {
     if(!c.type.includes('SOURCE') && c.type !== 'JUNCTION') { ctx.fillStyle='#333'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.font="11px Arial"; ctx.fillText(c.label, x+22, y); } 
 }
 
-function resetCircuit() { if(confirm("Rensa allt?")) { components=[]; wires=[]; selectedComps = []; updateShaftUI(); draw(); }}
+function resetCircuit() { if(confirm("Rensa allt?")) { components=[]; wires=[]; selectedComps = []; updateShaftUI(); draw(); saveToLocalStorage(); }}
+
+// --- INITIAL LOAD ---
+function init() {
+    const saved = localStorage.getItem('hiss_data');
+    if (saved) {
+        try {
+            const data = JSON.parse(saved);
+            if (data.components && data.wires) {
+                components = data.components;
+                wires = data.wires;
+                // Reset runtime states
+                components.forEach(c => { 
+                    c.state = false; 
+                    c.inputSignal = false; 
+                    c.grounded = false; 
+                    c.timerCounter = 0; 
+                    c.coilActive = false; 
+                    c.visited = false;
+                    if(c.timerMode === undefined) c.timerMode = 'TON';
+                });
+                updateShaftUI();
+            }
+        } catch(e) {
+            console.log("Autosave load failed", e);
+        }
+    }
+    resizeCanvas();
+    loop();
+}
+
 function loop() { updateTimers(); updateLogic(); draw(); requestAnimationFrame(loop); }
-resizeCanvas(); loop();
+// START
+init();
 </script>
 </body>
 </html>
